@@ -1,0 +1,43 @@
+{
+  "name": "battleplanetjs",
+  "version": "0.1.0",
+  "description": "A set of client+server for space battle",
+  "main": "./.bin/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start-prod": "node ./.bin/index.js",
+    "start": "node ./src/index.js",
+    "build": "rollup --config"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fadoli/BattlePlanetJS.git"
+  },
+  "keywords": [
+    "JS",
+    "game",
+    "2d",
+    "multipayer"
+  ],
+  "author": "Franck.M",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Fadoli/BattlePlanetJS/issues"
+  },
+  "homepage": "https://github.com/Fadoli/BattlePlanetJS#readme",
+  "dependencies": {
+    "express": "^4.17.1",
+    "pixi.js": "^5.2.1",
+    "socket.io": "^2.3.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^11.0.2",
+    "@rollup/plugin-json": "^4.0.2",
+    "@rollup/plugin-node-resolve": "^7.1.1",
+    "rollup": "^1.31.1",
+    "rollup-plugin-copy": "^3.3.0",
+    "rollup-plugin-node-builtins": "^2.1.2",
+    "rollup-plugin-progress": "^1.1.1",
+    "rollup-plugin-terser": "^5.2.0"
+  }
+}
