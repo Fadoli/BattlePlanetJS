@@ -4,7 +4,7 @@
   "description": "A set of client+server for space battle",
   "main": "./.bin/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tap ./test/*.test.js --reporter=spec",
     "start-prod": "node ./.bin/index.js",
     "start": "node ./src/index.js",
     "build": "rollup --config"
@@ -38,6 +38,8 @@
     "rollup-plugin-copy": "^3.3.0",
     "rollup-plugin-node-builtins": "^2.1.2",
     "rollup-plugin-progress": "^1.1.1",
-    "rollup-plugin-terser": "^5.2.0"
+    "rollup-plugin-terser": "^5.2.0",
+    "should": "^13.2.3",
+    "tap": "^14.10.6"
   }
 }
