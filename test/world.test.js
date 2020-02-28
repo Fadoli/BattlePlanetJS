@@ -76,12 +76,16 @@ describe("Hello World", () => {
     describe("applyPhysic", () => {
 
         describe("Gravity", () => {
-            const sun = createObject(1000, 0, 0, 100);
-            const sunLeft = createObject(1000, -100, 0, 100);
-            const sunRight = createObject(1000, +100, 0, 100);
-            const planetMiddle = createObject(100, 0, 0);
-            const simplePlanet = createObject(100, 200, 0);
-            const simpleMovingPlanet = createObject(100, 200, 100, 10, 10, 0, 1);
+            let sun, sunLeft, sunRight, planetMiddle, simplePlanet, simpleMovingPlanet;
+
+            beforeEach(() => {
+                sun = createObject(1000, 0, 0, 100);
+                sunLeft = createObject(1000, -100, 0, 100);
+                sunRight = createObject(1000, +100, 0, 100);
+                planetMiddle = createObject(100, 0, 0);
+                simplePlanet = createObject(100, 200, 0);
+                simpleMovingPlanet = createObject(100, 200, 100, 10, 10, 0, 1);
+            })
 
 
             it('physics should do nothing if there is nothing', () => {
