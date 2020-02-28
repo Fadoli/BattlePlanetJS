@@ -159,20 +159,86 @@ describe("Hello World", () => {
 
 
         describe("Collisions", () => {
-            const physRightToLeft = createObject(100, 30, 0, 10 , -10 , 0 ,1);
-            const physLeftToRight = createObject(100, -30, 0, 10 , 10 , 0 ,1);
+            let physRightToLeft, physLeftToRight;
 
+            beforeEach(() => {
+                physRightToLeft = createObject(100, 30, 0, 10, -10, 0, 1);
+                physLeftToRight = createObject(100, -30, 0, 10, 10, 0, 1);
+            })
 
-            it('objects should collides', () => {
-                map._physics = [physRightToLeft,physLeftToRight];
+            it('should collides', () => {
+                map._physics = [physRightToLeft, physLeftToRight];
 
                 // While it moves to the left, and hasn't crossed 0
-                while (physRightToLeft.vx < 0 && physRightToLeft.x > 0)
-                {
+                while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
                     map.applyPhysic();
                 }
 
-                 (physRightToLeft.x > 0).should.be.true("Object failed to collide");
+                (physRightToLeft.x > 0).should.be.true("Object failed to collide");
+            });
+
+            it('should preserve energy when colliding', () => {
+                map._physics = [physRightToLeft, physLeftToRight];
+                let energy = 0;
+                map.physics().forEach((elem) => {
+                    energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                });
+                energy = Math.round(energy);
+
+                // While it moves to the left, and hasn't crossed 0
+                while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
+                    map.applyPhysic();
+                }
+
+                let energyNew = 0;
+                map.physics().forEach((elem) => {
+                    energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                });
+                energyNew = Math.round(energyNew);
+                energyNew.should.be.eql(energy, "Energy is conserved in an fully elastic collision !");
+            });
+
+            it('should preserve energy when colliding and mass differ', () => {
+                map._physics = [physRightToLeft, physLeftToRight];
+                physRightToLeft.mass /= 2;
+                let energy = 0;
+                map.physics().forEach((elem) => {
+                    energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                });
+                energy = Math.round(energy);
+
+                // While it moves to the left, and hasn't crossed 0
+                while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
+                    map.applyPhysic();
+                }
+
+                let energyNew = 0;
+                map.physics().forEach((elem) => {
+                    energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                });
+                energyNew = Math.round(energyNew);
+                energyNew.should.be.eql(energy, "Energy is conserved in an fully elastic collision !");
+            });
+
+            it('should preserve "energy" when colliding with multiplier', () => {
+                map._physics = [physRightToLeft, physLeftToRight];
+                physRightToLeft.multiplier = 2;
+                let energy = 0;
+                map.physics().forEach((elem) => {
+                    energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy) / Math.sqrt(elem.multiplier)
+                });
+                energy = Math.round(energy);
+                // While it moves to the left, and hasn't crossed 0
+                while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
+                    map.applyPhysic();
+                }
+
+                let energyNew = 0;
+                map.physics().forEach((elem) => {
+                    energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy) / Math.sqrt(elem.multiplier)
+                });
+                energyNew = Math.round(energyNew);
+                energyNew.should.be.eql(energy, "Energy is conserved in an fully elastic collision !");
             });
         });
     });
