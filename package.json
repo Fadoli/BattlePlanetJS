@@ -5,6 +5,7 @@
   "main": "./.bin/index.js",
   "scripts": {
     "test": "tap ./test/*.test.js --reporter=spec",
+    "posttest": "tap --coverage-report=text-lcov > ./lcov.info",
     "start-prod": "node ./.bin/index.js",
     "start": "node ./src/index.js",
     "build": "rollup --config"
