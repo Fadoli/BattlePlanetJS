@@ -1,6 +1,6 @@
 require('tap').mochaGlobals()
 const should = require('should')
-const world = require('../src/world');
+const Map = require('../src/world').Map;
 
 const clone = (obj) => {
     return JSON.parse(JSON.stringify(obj));
@@ -58,10 +58,10 @@ const createObject = (mass, x = 0, y = 0, size = 10, vx = 0, vy = 0, multiplier 
 }
 
 describe("World", () => {
-    
-    let map = new world.Map(1000);
+    // Nounka
+    let map = new Map(1000);
     beforeEach(() => {
-        map = new world.Map(1000);
+        map = new Map(1000);
     });
     
     describe("suns", () => {
