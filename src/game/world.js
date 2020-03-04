@@ -105,7 +105,7 @@ function ApplyColllision(a, b) {
 * @export
 * @class Map
 */
-export class Map {
+class Map {
     /**
     * Creates an instance of Map.
     * @param {number} size
@@ -254,4 +254,8 @@ export class Map {
             this.elements[key] = newArr;
         }
     }
+}
+
+module.exports = {
+    Map: Map,
 }

@@ -2,7 +2,7 @@
  * @export
  * @class Client
  */
-export class Client {
+class Client {
     constructor(socket) {
         this.socket = socket;
         this.token = undefined;
@@ -108,4 +108,8 @@ function getUserInLoby() {
         }
     }
     return arr;
+}
+
+module.exports = {
+    Client: Client
 }

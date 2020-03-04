@@ -1,13 +1,19 @@
 const fs = require('fs');
-
+const path = require('path');
 
 module.exports = {
 
     init(app) {
+
+        let dir = __dirname;
+        if ( dir.endsWith("/server") ) {
+            dir = path.dirname(dir);
+        }
+
         // This decides where the script is on the hard-drive !
-        let scriptPath = __dirname + '/client/_script.js';
+        let scriptPath = dir + '/client/_script.js';
         if (!fs.existsSync(scriptPath)) {
-            scriptPath = __dirname + '/client/_script.min.js';
+            scriptPath = dir + '/client/_script.min.js';
             if (!fs.existsSync(scriptPath)) {
                 console.log("Please build your project !");
                 return 1;
@@ -19,7 +25,7 @@ module.exports = {
         });
 
         app.get('/', function (req, res) {
-            res.sendFile(__dirname + '/client/index.html');
+            res.sendFile(dir + '/client/index.html');
         });
         app.get('/res/*', function (req, res) {
             const data = {
@@ -30,7 +36,7 @@ module.exports = {
             if (data.url.includes('..')) {
                 res.status(404).send();
             } else {
-                res.sendFile(__dirname + '/client' + data.url);
+                res.sendFile(dir + '/client' + data.url);
             }
         });
     }

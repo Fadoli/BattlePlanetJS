@@ -1,4 +1,4 @@
-import { Client } from '../server/client';
+const Client = require('../server/client').Client;
 const util = require("../utils");
 
 const objectTool = require('./lib/physicalObject');
@@ -11,7 +11,7 @@ const games = {};
  * @export
  * @class gameManager
  */
-export class GameManager {
+class GameManager {
 
     /**
      * Creates an instance of GameManager.
@@ -77,4 +77,8 @@ export class GameManager {
     static getGames() {
         return Object.values(games);
     }
+}
+
+module.exports = {
+    GameManager: GameManager,
 }
