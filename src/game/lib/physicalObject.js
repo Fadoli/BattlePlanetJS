@@ -27,7 +27,7 @@
 const createObject = (mass, x = 0, y = 0, size = 10, vx = 0, vy = 0) => {
     return {
         mass: mass,
-        x: x,  y: y,
+        x: x, y: y,
         size: size,
         vx: vx,
         vy: vy,
@@ -45,8 +45,8 @@ const objectDefault = {
         mass: 0,
         vx: 0,
         vy: 0,
-        multiplier:1,
-        pendingRemoval:false,
+        multiplier: 1,
+        pendingRemoval: false,
         isAffectedByGravity: true,
     },
     sun: {
@@ -62,15 +62,25 @@ const objectDefault = {
         mass: 2,
     }
 }
-function getDefault (type,sizeModifier = 1,weightModifier = 1) {
-    return { 
-        ... objectDefault.default,
-        ... objectDefault[type]
+const getDefault = function (type, sizeModifier, weightModifier) {
+    return {
+        ...objectDefault.default,
+        ...objectDefault[type],
+        ... {
+            mass: objectDefault[type].mass * weightModifier,
+            size: objectDefault[type].size * sizeModifier,
+        }
     }
 }
 
 module.exports = {
-    buildSun = ( sizeModifier, weightModifier ) => getDefault('sun',sizeModifier,weightModifier),
-    buildPlanet = ( sizeModifier, weightModifier ) => getDefault('planet',sizeModifier,weightModifier),
-    buildBullet = ( sizeModifier, weightModifier ) => getDefault('bullet',sizeModifier,weightModifier),
+    buildSun: function (sizeModifier = 1, weightModifier = 1) {
+        return getDefault('sun', sizeModifier, weightModifier);
+    },
+    buildPlanet: function (sizeModifier = 1, weightModifier = 1) {
+        return getDefault('planet', sizeModifier, weightModifier);
+    },
+    buildBullet: function (sizeModifier = 1, weightModifier = 1) {
+        return getDefault('bullet', sizeModifier, weightModifier);
+    }
 };
