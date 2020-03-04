@@ -1,7 +1,11 @@
 import * as PIXI from 'pixi.js'
 
-const app = new PIXI.Application();
-document.body.appendChild(app.view);
+const app = new PIXI.Application({
+    width: 1024,
+    height: 600,
+    backgroundColor: 0x111111
+});
+$("#game").append(app.view);
 
 const sprites = new PIXI.ParticleContainer(10000, {
     scale: true,

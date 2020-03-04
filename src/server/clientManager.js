@@ -2,15 +2,15 @@ const Client = require("./client").Client;
 const GameManager = require("../game/gameManager").GameManager;
 const util = require("../utils");
 
-const players = {};
-const games = {};
-
-function log() {
-    console.log(arguments);
+function log(str) {
+    console.log("[CLIENT MANAGER] : " + str);
 }
 
-function notifyUserInLoby ( msg ) {
-    getUserInLoby()
+function notifyUserInLoby(msg) {
+    const users = Client.getUserInLoby();
+    for (const user of users) {
+        user.socket.emit('chat', msg);
+    }
 }
 
 module.exports = {
@@ -33,21 +33,22 @@ module.exports = {
                 })
                 user.register(uuid);
             });
-            socket.on('create', function ( opts ) {
-                new GameManager(user, opts.name)
-                user.moveToGame(games[uuid]);
+            socket.on('create', function (opts) {
+                const game = GameManager.createGame(user, opts.name)
+                user.moveToGame(game);
             });
             socket.on('chat', function (msg) {
                 log('chat: ' + msg);
-                notifyUserInLoby(msg);
+                if (user.isInGame()) {
+                    user.game.chat(msg);
+                } else {
+                    notifyUserInLoby(msg);
+                }
             });
 
 
-            socket.on('gameLeave', function ( opts ) {
+            socket.on('gameLeave', function (opts) {
                 user.moveToLoby();
-            });
-            socket.on('gameChat', function (msg) {
-                user.game.chat(msg);
             });
             socket.on('gameUpdate', function (msg) {
                 log('message: ' + msg);

@@ -1,11 +1,70 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>BattlePlanetJS</title>
-  </head>
-  <body>
-    <!-- One of those two will be valid -->
-    <script src="main.js"></script>
-  </body>
+
+<head>
+  <meta charset="utf-8">
+  <title>BattlePlanetJS</title>
+  <link rel="stylesheet" href="/res/style.css">
+</head>
+
+<body>
+
+  <div id="login">
+
+  </div>
+  <div id="content">
+    <div id="main">
+      <div id="lobby">
+      </div>
+      <div id="game">
+      </div>
+    </div>
+    <!-- This will be on the right side of the screen -->
+    <div id="side">
+      <ul id="messages"></ul>
+    </div>
+    <!-- This will be at the end of the page -->
+    <form action="">
+      <input id="m" autocomplete="off" /><button>Send</button>
+    </form>
+  </div>
+
+
+
+  <!-- Some libs from cloudflare -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script>
+    $(function () {
+      var socket = io();
+      socket.emit('join', 'Toto !');
+      var token = localStorage.getItem('token');
+      if (!token) {
+        socket.emit('getToken');
+      } else {
+        socket.emit('setToken', { uuid: token });
+      }
+      socket.on('setToken', function (msg) {
+        token = msg.uuid;
+        localStorage.setItem('token', token);
+      })
+
+      // Chat managing here !
+      $('form').submit(function (e) {
+        e.preventDefault(); // prevents page reloading
+        socket.emit('chat', $('#m').val());
+        $('#m').val('');
+        return false;
+      });
+      socket.on('chat', function (msg) {
+        console.log(msg);
+        $('#messages').append($('<li>').text(msg));
+      });
+    });
+  </script>
+  <script src="main.js"></script>
+
+
+</body>
+
 </html>
