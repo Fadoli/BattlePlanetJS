@@ -83,11 +83,10 @@ describe("/game/World", () => {
         });
     });
     
-    describe("applyPhysic", () => {
-        
+    describe("tick", () => {
         it('physics should do nothing if there is nothing', () => {
             const physics = clone(map.elements);
-            map.applyPhysic();
+            map.tick();
             map.elements.should.be.eql(physics);
         });
         
@@ -106,15 +105,15 @@ describe("/game/World", () => {
                     const simpleMovingClone = clone(simpleMoving);
                     const origX = simpleMoving.x;
                     
-                    map.applyPhysic();
+                    map.tick();
                     simpleMoving.should.not.be.eql(simpleMovingClone);
                     simpleMoving.x.should.be.eql(origX + simpleMoving.vx);
                     
-                    map.applyPhysic();
+                    map.tick();
                     simpleMoving.should.not.be.eql(simpleMovingClone);
                     simpleMoving.x.should.be.eql(origX + 2 * simpleMoving.vx);
                     
-                    map.applyPhysic();
+                    map.tick();
                     simpleMoving.should.not.be.eql(simpleMovingClone);
                     simpleMoving.x.should.be.eql(origX + 3 * simpleMoving.vx);
                 });
@@ -122,14 +121,14 @@ describe("/game/World", () => {
                 it('planets should stay the same with no interaction', () => {
                     map.elements.planets = [simple];
                     const physics = clone(map.planets());
-                    map.applyPhysic();
+                    map.tick();
                     map.planets().should.be.eql(physics);
                 });
                 
                 it('planets should be attracted by planets', () => {
                     map.elements.planets = [simple,middle];
                     const orig = dist(simple, middle);
-                    map.applyPhysic();
+                    map.tick();
                     (orig > dist(simple, middle)).should.be.true("Physics should attracts each others");
                 });
             });
@@ -147,15 +146,15 @@ describe("/game/World", () => {
                     const simpleMovingClone = clone(simpleMoving);
                     const origX = simpleMoving.x;
                     
-                    map.applyPhysic();
+                    map.tick();
                     simpleMoving.should.not.be.eql(simpleMovingClone);
                     simpleMoving.x.should.be.eql(origX + simpleMoving.vx);
                     
-                    map.applyPhysic();
+                    map.tick();
                     simpleMoving.should.not.be.eql(simpleMovingClone);
                     simpleMoving.x.should.be.eql(origX + 2 * simpleMoving.vx);
                     
-                    map.applyPhysic();
+                    map.tick();
                     simpleMoving.should.not.be.eql(simpleMovingClone);
                     simpleMoving.x.should.be.eql(origX + 3 * simpleMoving.vx);
                 });
@@ -163,14 +162,14 @@ describe("/game/World", () => {
                 it('bullets should stay the same with no interaction', () => {
                     map.elements.bullets = [simple];
                     const physics = clone(map.planets());
-                    map.applyPhysic();
+                    map.tick();
                     map.planets().should.be.eql(physics);
                 });
                 
                 it('bullets should not be attracted by bullets', () => {
                     map.elements.bullets = [simple,middle];
                     const orig = dist(simple, middle);
-                    map.applyPhysic();
+                    map.tick();
                     (orig > dist(simple, middle)).should.be.false("Physics should attracts each others");
                 });
             });
@@ -187,7 +186,7 @@ describe("/game/World", () => {
                     map.elements.planets = [planet];
                     
                     const cloned = clone(planet);
-                    map.applyPhysic();
+                    map.tick();
                     planet.should.eql(cloned);
                 });
                 it('bullets should be attracted by planets', () => {
@@ -195,7 +194,7 @@ describe("/game/World", () => {
                     map.elements.planets = [planet];
                     
                     const cloned = clone(bullet);
-                    map.applyPhysic();
+                    map.tick();
                     bullet.should.not.eql(cloned);
                 });
             });
@@ -211,7 +210,7 @@ describe("/game/World", () => {
                     map.elements.suns = [sun];
                     
                     const cloned = clone(sun);
-                    map.applyPhysic();
+                    map.tick();
                     sun.should.eql(cloned);
                 });
                 it('bullets should be attracted by suns', () => {
@@ -219,7 +218,7 @@ describe("/game/World", () => {
                     map.elements.suns = [sun];
                     
                     const cloned = clone(bullet);
-                    map.applyPhysic();
+                    map.tick();
                     bullet.should.not.eql(cloned);
                 });
             });
@@ -235,7 +234,7 @@ describe("/game/World", () => {
                     map.elements.suns = [sun];
                     
                     const cloned = clone(sun);
-                    map.applyPhysic();
+                    map.tick();
                     sun.should.eql(cloned);
                 });
                 it('planets should be attracted by suns', () => {
@@ -243,7 +242,7 @@ describe("/game/World", () => {
                     map.elements.suns = [sun];
                     
                     const cloned = clone(planet);
-                    map.applyPhysic();
+                    map.tick();
                     planet.should.not.eql(cloned);
                 });
             });
@@ -263,7 +262,7 @@ describe("/game/World", () => {
                     map.elements.suns = [sun];
                     map.elements.planets = [simplePlanet];
                     const physics = clone(map.planets());
-                    map.applyPhysic();
+                    map.tick();
                     map.planets().should.not.be.eql(physics);
                 });
                 
@@ -271,7 +270,7 @@ describe("/game/World", () => {
                     map.elements.suns = [sun];
                     map.elements.planets = [simplePlanet];
                     const orig = dist(sun, simplePlanet);
-                    map.applyPhysic();
+                    map.tick();
                     (orig > dist(sun, simplePlanet)).should.be.true("Physics should attracts each others");
                 });
                 
@@ -280,7 +279,7 @@ describe("/game/World", () => {
                     map.elements.planets = [planetMiddle];
                     
                     const physics = clone(map.planets());
-                    map.applyPhysic();
+                    map.tick();
                     map.planets().should.be.eql(physics);
                 });
                 
@@ -288,12 +287,11 @@ describe("/game/World", () => {
                     map.elements.suns = [sun];
                     map.elements.planets = [simplePlanet];
                     const suns = clone(map.suns());
-                    map.applyPhysic();
+                    map.tick();
                     map.suns().should.be.eql(suns);
                 });
             });
         });
-        
         
         describe("Collisions", () => {
             describe("Planet", () => {
@@ -311,7 +309,7 @@ describe("/game/World", () => {
                     
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     
                     (physRightToLeft.x > 0).should.be.true("Object failed to collide");
@@ -327,7 +325,7 @@ describe("/game/World", () => {
                     
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     
                     let energyNew = 0;
@@ -349,7 +347,7 @@ describe("/game/World", () => {
                     
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     
                     let energyNew = 0;
@@ -370,7 +368,7 @@ describe("/game/World", () => {
                     energy = Math.round(energy);
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     
                     let energyNew = 0;
@@ -396,7 +394,7 @@ describe("/game/World", () => {
                     
                     // While it moves to the left, and hasn't crossed 0
                     while (map.elements.bullets.length === 2 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     
                     (map.elements.bullets.length).should.be.equal(0,"Object failed to collide");
@@ -419,7 +417,7 @@ describe("/game/World", () => {
                     const vx = physRightToLeft.vx;
                     // While it moves to the left, and hasn't crossed 0
                     while (map.elements.bullets.length === 1 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     const expectedVx = vx + physLeftToRight.vx * physLeftToRight.mass * Math.sqrt(physRightToLeft.multiplier) / physRightToLeft.mass;
                     physRightToLeft.vx.should.be.eql(expectedVx);
@@ -434,7 +432,7 @@ describe("/game/World", () => {
                     const vx = physRightToLeft.vx;
                     // While it moves to the left, and hasn't crossed 0
                     while (map.elements.bullets.length === 1 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     const expectedVx = vx + physLeftToRight.vx * physLeftToRight.mass * Math.sqrt(physRightToLeft.multiplier) / physRightToLeft.mass;
                     physRightToLeft.vx.should.be.eql(expectedVx);
@@ -447,7 +445,7 @@ describe("/game/World", () => {
                     
                     // While it moves to the left, and hasn't crossed 0
                     while (map.elements.bullets.length === 1 && physRightToLeft.x > 0) {
-                        map.applyPhysic();
+                        map.tick();
                     }
                     
                     (map.elements.bullets.length).should.be.equal(0,"Object failed to collide");

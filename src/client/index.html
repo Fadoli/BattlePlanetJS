@@ -10,13 +10,19 @@
 <body>
 
   <div id="login">
-
+    <form action="" id="user">
+      <input id="userInput" autocomplete="off" /><button>Login</button>
+    </form>
   </div>
-  <div id="content">
+  <div id="content" style="display: none;">
     <div id="main">
       <div id="lobby">
+        <form action="" id="game">
+          <input id="gameInput" autocomplete="off" /><button>Create</button>
+        </form>
+        <ul id="games"></ul>
       </div>
-      <div id="game">
+      <div id="gameRender" style="display: none;">
       </div>
     </div>
     <!-- This will be on the right side of the screen -->
@@ -24,8 +30,8 @@
       <ul id="messages"></ul>
     </div>
     <!-- This will be at the end of the page -->
-    <form action="">
-      <input id="m" autocomplete="off" /><button>Send</button>
+    <form action="" id="chat">
+      <input id="chatInput" autocomplete="off" /><button>Send</button>
     </form>
   </div>
 
@@ -35,30 +41,91 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script>
+    var socket = io();
+    var token = localStorage.getItem('token');
+    var username = localStorage.getItem('username');
+    var gameId = undefined;
+
     $(function () {
-      var socket = io();
-      socket.emit('join', 'Toto !');
-      var token = localStorage.getItem('token');
+      // Username managing here !
+      var updateUser = function () {
+        if (!username) {
+          $('#login').show();
+          $('#content').hide();
+        } else {
+          $('#login').hide();
+          $('#content').show();
+        }
+      }
+      var updateGame = function () {
+        if (!gameId) {
+          $('#lobby').show();
+          $('#gameRender').hide();
+        } else {
+          $('#lobby').hide();
+          $('#gameRender').show();
+        }
+      }
+      updateUser();
+      updateGame();
       if (!token) {
         socket.emit('getToken');
       } else {
-        socket.emit('setToken', { uuid: token });
+        socket.emit('setToken', { uuid: token, username: username });
       }
       socket.on('setToken', function (msg) {
         token = msg.uuid;
         localStorage.setItem('token', token);
       })
+      $('form#user').submit(function (e) {
+        e.preventDefault(); // prevents page reloading
+        username = $('#userInput').val()
+        localStorage.setItem('username', username);
+        socket.emit('setToken', { uuid: token, username: username });
+        updateUser();
+        return false;
+      });
 
       // Chat managing here !
-      $('form').submit(function (e) {
+      $('form#chat').submit(function (e) {
         e.preventDefault(); // prevents page reloading
-        socket.emit('chat', $('#m').val());
-        $('#m').val('');
+        socket.emit('chat', $('#chatInput').val());
+        $('#chatInput').val('');
         return false;
       });
       socket.on('chat', function (msg) {
-        console.log(msg);
-        $('#messages').append($('<li>').text(msg));
+        const array = $('#messages').children();
+        if (array.length > 50)
+        {
+          array[array.length - 1].remove();
+        }
+        $('#messages').prepend($('<li>').text(msg));
+      });
+
+      // Game (list) managing here !
+      $('form#game').submit(function (e) {
+        e.preventDefault(); // prevents page reloading
+        socket.emit('gameCreate', {
+          name: $('#gameInput').val()
+        });
+        $('#gameInput').val('');
+        return false;
+      });
+      socket.on('gameJoin', function (uuid) {
+        gameId = uuid;
+        updateGame();
+      });
+      socket.on('lobby', function (servers) {
+        gameId = undefined;
+        updateGame();
+        servers.forEach(game => {
+          console.log(game)
+          // game has :
+          // uuid
+          // name
+          // uuid
+
+        });
       });
     });
   </script>

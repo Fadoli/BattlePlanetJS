@@ -5,7 +5,7 @@ const app = new PIXI.Application({
     height: 600,
     backgroundColor: 0x111111
 });
-$("#game").append(app.view);
+$("#gameRender").append(app.view);
 
 const sprites = new PIXI.ParticleContainer(10000, {
     scale: true,

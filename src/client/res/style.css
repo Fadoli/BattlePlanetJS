@@ -12,25 +12,43 @@ body {
     width: 80%;
     margin: auto;
 }
+
+#loby, #game {
+    width: 1024px;
+    height: 600px;
+    margin: auto;
+    display: block;
+}
+
 #main {
     width: 1024px;
     margin: auto;
-    display: inline-block;
+    display: block;
+    float: left;
 }
+
 #side {
-    width: calc( 100% - 1040px );
+    width: calc( 100% - 1024px);
     margin: auto;
-    display: inline-block;
+    display: block;
+    float: right;
+
+    height: 600px;
+    overflow: hidden;
+    overflow-y: auto;
 }
+
 #messages {
     list-style-type: none;
     margin: 0;
     padding: 0;
     background: #aaa;
 }
+
 #messages li {
     padding: 5px 10px;
 }
+
 #messages li:nth-child(odd) {
     background: #666;
 }
@@ -38,15 +56,20 @@ body {
 form {
     background: #111111;
     padding: 3px;
-    bottom: 0;
     width: 100%;
+}
+
+form#user {
+    width: 50%;
+    margin: auto;
+    vertical-align: middle;
 }
 
 form input {
     border: 0;
     padding: 10px;
     width: 90%;
-    margin-right: .5%;
+    margin-right: .7%;
 }
 
 form button {
@@ -55,7 +78,6 @@ form button {
     border: none;
     padding: 10px;
 }
-
 
 body {
     background: #808080;

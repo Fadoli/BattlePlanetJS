@@ -75,7 +75,6 @@ function ApplyElasticColllision(a, b) {
 /**
 * does A and B collide ?
 * @param {Physic} a
-* @param {Physic} b
 * @returns {boolean}
 */
 function canCollide(a, b) {
@@ -143,6 +142,11 @@ class Map {
     */
     bullets() {
         return this.elements.bullets;
+    }
+
+    tick () {
+        this.applyPhysic();
+        this.applyRemoval();
     }
     
     applyPhysic() {
@@ -229,8 +233,6 @@ class Map {
                 }
             }
         }
-
-        this.applyRemoval();
     }
     
     /**
