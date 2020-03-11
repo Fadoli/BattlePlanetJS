@@ -23,15 +23,33 @@ class GameManager {
         this.owner = owner;
         this.uuid = util.uuidv4();
         this.name = name;
+        this.tick = undefined;
 
+        /** 
+         * @type {Object.<string,Client>}
+         */
         this.players = {};
         this.addPlayer(owner);
     }
 
 
+    /**
+     * Start the tick interval, and create the map for the players :)
+     * @memberof GameManager
+     */
     start() {
         const mapSize = 600 + 100 * players.length;
         this.map = new Map(mapSize);
+        this.tick = setInterval(() => this.map.tick())
+    }
+
+    /**
+     * Cleanup the tick interval
+     * @memberof GameManager
+     */
+    stop () {
+        clearInterval(this.tick);
+        this.tick = undefined;
     }
 
     /**
@@ -63,17 +81,53 @@ class GameManager {
         return Object.keys(this.players).length;
     }
 
+    /**
+     *
+     * @static
+     * @memberof GameManager
+     */
+    sendChat (msg) {
+        const players = Object.values(this.players);
+        for (const player of players) {
+            player.sendChat(msg);
+        }
+    }
+    /**
+     * Stop a server
+     * @static
+     * @param {GameManager} game
+     * @memberof GameManager
+     */
     static stopGame (game) {
+        game.stop();
         delete games[game.uuid];
     }
+    /**
+     * Create a game
+     * @static
+     * @returns {GameManager}
+     * @memberof GameManager
+     */
     static createGame(owner, name) {
         const newGame = new GameManager(owner, name);
         games[newGame.uuid] = newGame;
         return newGame;
     }
+    /**
+     * Get a specific game
+     * @static
+     * @returns {GameManager}
+     * @memberof GameManager
+     */
     static getGame(uuid) {
         return games[uuid];
     }
+    /**
+     * Get all the current games
+     * @static
+     * @returns {Array<GameManager>}
+     * @memberof GameManager
+     */
     static getGames() {
         return Object.values(games);
     }

@@ -1,3 +1,5 @@
+const GameManager = require("../game/gameManager").GameManager;
+
 /**
  * @export
  * @class Client
@@ -7,16 +9,31 @@ class Client {
         this.socket = socket;
         this.token = undefined;
         this.game = undefined;
+        this.name = "unnamed";
     }
 
     /**
      * Register the UUID of a client
-     * @param {string} UUID
+     * @param {string} uuid
+     * @param {string} name
      * @memberof Client
      */
-    register(UUID) {
-        this.token = UUID;
+    register(uuid, name) {
+        const previous = Client.getUser(uuid);
+        this.token = uuid;
+        this.socket.emit('setToken', {
+            uuid: uuid
+        })
+        this.name = name;
         register(this);
+        if (previous && previous.isInGame())
+        {
+            this.moveToGame(previous.game);
+        }
+        else 
+        {
+            this.moveToLoby();
+        }
     }
     /**
      * Disconenct the client
@@ -45,9 +62,18 @@ class Client {
      * @param {Game} a game instance
      * @memberof Client
      */
-    moveToGame(id) {
-        this.game = id;
+    moveToGame( instance ) {
+        this.game = instance;
+
+        // First notify users
+        console.log(`${this.name} is joining ${this.game.name}`);
+        this.sendChat(`You joined the server ${this.game.name}`);
+        this.game.sendChat(`${this.name} joined the game`);
+
         this.game.addPlayer(this);
+        
+
+        this.socket.emit('gameJoin', this.game.uuid);
     }
 
     /**
@@ -55,11 +81,29 @@ class Client {
      * @memberof Client
      */
     moveToLoby() {
-        if (!this.isInGame()) {
-            return;
+        if (this.isInGame()) {
+            this.game.removePlayer(this);
+            this.game = undefined;
         }
-        this.game.removePlayer(this);
-        this.game = undefined;
+        const games = GameManager.getGames();
+        const gameUserList = [];
+        for (const game of games) {
+            gameUserList.push({
+                uuid: game.uuid,
+                name: game.name,
+                count: game.playerCount()
+            })
+        }
+        this.socket.emit("lobby", gameUserList);
+    }
+
+    /**
+     * Send a chat message to an end user
+     * @param {string} msg
+     * @memberof Client
+     */
+    sendChat( msg ) {
+        this.socket.emit('chat', msg);
     }
 
     /**
@@ -70,6 +114,17 @@ class Client {
      */
     static getUserInLoby() {
         return getUserInLoby();
+    }
+
+    /**
+     * Return the user with such uuid
+     * @static
+     * @param {string} uuid
+     * @returns {Client}
+     * @memberof Client
+     */
+    static getUser (uuid) {
+        return clientMap[uuid];
     }
 }
 
