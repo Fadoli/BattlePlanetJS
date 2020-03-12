@@ -20,6 +20,13 @@ body {
     display: block;
 }
 
+#gameListing {
+    display: block;
+    background: #aaa;
+    margin: 5px;
+    padding: 5px;
+}
+
 #main {
     width: 1024px;
     margin: auto;

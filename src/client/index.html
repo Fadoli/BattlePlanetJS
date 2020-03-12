@@ -17,7 +17,7 @@
   <div id="content" style="display: none;">
     <div id="main">
       <div id="lobby">
-        <form action="" id="game">
+        <form action="" id="gameForm">
           <input id="gameInput" autocomplete="off" /><button>Create</button>
         </form>
         <ul id="games"></ul>
@@ -103,7 +103,7 @@
       });
 
       // Game (list) managing here !
-      $('form#game').submit(function (e) {
+      $('form#gameForm').submit(function (e) {
         e.preventDefault(); // prevents page reloading
         socket.emit('gameCreate', {
           name: $('#gameInput').val()
@@ -118,13 +118,21 @@
       socket.on('lobby', function (servers) {
         gameId = undefined;
         updateGame();
+
+        const list = $('#games');
+        list.html("");
         servers.forEach(game => {
           console.log(game)
           // game has :
           // uuid
           // name
-          // uuid
-
+          // count
+          const local = $('<div id="gameListing">');
+          local.text(`${game.name} ${game.count} (${game.uuid})`)
+          local.on('click', () => {
+            console.log(game);
+          })
+          list.append(local)
         });
       });
     });
