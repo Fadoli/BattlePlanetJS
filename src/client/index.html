@@ -95,8 +95,7 @@
       });
       socket.on('chat', function (msg) {
         const array = $('#messages').children();
-        if (array.length > 50)
-        {
+        if (array.length > 50) {
           array[array.length - 1].remove();
         }
         $('#messages').prepend($('<li>').text(msg));
@@ -115,24 +114,38 @@
         gameId = uuid;
         updateGame();
       });
-      socket.on('lobby', function (servers) {
+      function addServer(game) {
+      }
+      socket.on('lobbyJoin', function () {
         gameId = undefined;
         updateGame();
-
+      });
+      socket.on('lobbyUpdate', function (req) {
+        const action = req.action;
+        const servers = req.data;
         const list = $('#games');
-        list.html("");
+        console.log(req);
+
+        if (action === 'set') {
+          list.html("");
+        }
+        // game has :
+        // uuid
+        // name
+        // count
         servers.forEach(game => {
-          console.log(game)
-          // game has :
-          // uuid
-          // name
-          // count
-          const local = $('<div id="gameListing">');
-          local.text(`${game.name} ${game.count} (${game.uuid})`)
-          local.on('click', () => {
-            console.log(game);
-          })
-          list.append(local)
+          if (action === 'remove') {
+            try {
+              $(`#${game.uuid}`).remove();
+            } catch (e) { }
+          } else {
+            const local = $(`<div id="${game.uuid}" class="gameListing">`);
+            local.text(`${game.name} ${game.count} (${game.uuid})`)
+            local.on('click', () => {
+              console.log(game);
+            })
+            list.append(local)
+          }
         });
       });
     });

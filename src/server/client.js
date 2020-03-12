@@ -32,7 +32,7 @@ class Client {
         }
         else 
         {
-            this.moveToLoby();
+            this.moveToLobby();
         }
     }
     /**
@@ -79,12 +79,25 @@ class Client {
     /**
      * Move the client back to the loby
      * @memberof Client
+     * @returns {any} Either a game if it's a game end, otherwise nothing
      */
-    moveToLoby() {
+    moveToLobby() {
+        let output = undefined;
         if (this.isInGame()) {
-            this.game.removePlayer(this);
+            // this function return itself if it was the last user
+            output = this.game.removePlayer(this);
             this.game = undefined;
         }
+        this.socket.emit("lobbyJoin");
+        this.notifyLobbyGames();
+        return output;
+    }
+
+    /**
+     * Sends current game to user
+     * @memberof Client
+     */
+    notifyLobbyGames() {
         const games = GameManager.getGames();
         const gameUserList = [];
         for (const game of games) {
@@ -94,7 +107,38 @@ class Client {
                 count: game.playerCount()
             })
         }
-        this.socket.emit("lobby", gameUserList);
+        this.socket.emit("lobbyUpdate", {
+            action: 'set',
+            data: gameUserList
+        });
+    }
+    /**
+     * Sends current game to user
+     * @memberof Client
+     */
+    notifyNewLobbyGame(game) {
+        this.socket.emit("lobbyUpdate", {
+            action: 'add',
+            data: [{
+                uuid: game.uuid,
+                name: game.name,
+                count: game.playerCount()
+            }]
+        });
+    }
+    /**
+     * Sends current game to user
+     * @memberof Client
+     */
+    notifyEndLobbyGame(game) {
+        this.socket.emit("lobbyUpdate", {
+            action: 'remove',
+            data: [{
+                uuid: game.uuid,
+                name: game.name,
+                count: 0
+            }]
+        });
     }
 
     /**

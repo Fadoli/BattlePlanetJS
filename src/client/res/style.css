@@ -20,7 +20,7 @@ body {
     display: block;
 }
 
-#gameListing {
+.gameListing {
     display: block;
     background: #aaa;
     margin: 5px;

@@ -69,6 +69,7 @@ class GameManager {
         delete this.players[player.token];
         if (this.playerCount() === 0) {
             GameManager.stopGame(this);
+            return this;
         }
     }
 

@@ -6,10 +6,17 @@ function log(str) {
     console.log("[CLIENT MANAGER] : " + str);
 }
 
-function notifyUserInLoby(msg) {
+function notifyUserInLoby(cb) {
     const users = Client.getUserInLoby();
     for (const user of users) {
-        user.sendChat(msg);
+        cb(user)
+    }
+}
+
+function userLeaveGame (user) {
+    const res = user.moveToLobby();
+    if (res) {
+        notifyUserInLoby((usr) => usr.notifyEndLobbyGame(res))
     }
 }
 
@@ -38,8 +45,8 @@ module.exports = {
                     socket.emit('error', 'not connected');
                     return;
                 }
-                if ( msg === '/leave') {
-                    user.moveToLoby();
+                if (msg === '/leave') {
+                    userLeaveGame(user);
                     return;
                 }
                 try {
@@ -48,7 +55,7 @@ module.exports = {
                     if (user.isInGame()) {
                         user.game.sendChat(display);
                     } else {
-                        notifyUserInLoby(display);
+                        notifyUserInLoby((anotherUser) => anotherUser.sendChat(msg));
                     }
                 } catch (e) {
                     log("FAILED chat : " + e)
@@ -59,6 +66,7 @@ module.exports = {
                 try {
                     const game = GameManager.createGame(user, opts.name)
                     user.moveToGame(game);
+                    notifyUserInLoby((anotherUser) => anotherUser.notifyNewLobbyGame(game));
                 } catch (e) {
                     log("FAILED gameCreate : " + e)
                 }
@@ -73,7 +81,7 @@ module.exports = {
             });
 
             socket.on('gameLeave', function (opts) {
-                user.moveToLoby();
+                userLeaveGame(user);
             });
             socket.on('gameUpdate', function (msg) {
                 log('message: ' + msg);
