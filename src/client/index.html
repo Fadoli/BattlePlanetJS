@@ -142,6 +142,9 @@
             const local = $(`<div id="${game.uuid}" class="gameListing">`);
             local.text(`${game.name} ${game.count} (${game.uuid})`)
             local.on('click', () => {
+              socket.emit('gameJoin', {
+                uuid: game.uuid
+              });
               console.log(game);
             })
             list.append(local)
