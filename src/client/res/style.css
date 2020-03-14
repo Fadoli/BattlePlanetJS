@@ -9,11 +9,9 @@ body {
 }
 
 #content {
-    width: 90%;
+    min-width: 400px;
+    max-width: 100%;
     margin: auto;
-
-    min-height: 600px;
-    max-height: 800px;
 }
 
 #game, #loby{
@@ -31,15 +29,18 @@ body {
 #side, #main {
     margin: auto;
     display: block;
-    min-height: 600px;
+    min-height: 400px;
+    height: calc( 100vh - 5em );
     overflow: hidden;
-    overflow-y: auto;
 }
 #main {
     width: 75%;
     float: left;
 }
 
+#lobby, #side {
+    overflow-y: auto;
+}
 #side {
     width: 25%;
     float: right;
