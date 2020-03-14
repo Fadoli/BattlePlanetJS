@@ -3,7 +3,7 @@
 
 const defaultSize = {
     width: 1024,
-    height: 600,
+    height: 700,
 }
 
 const app = new PIXI.Application({
