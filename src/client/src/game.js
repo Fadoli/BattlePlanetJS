@@ -1,4 +1,5 @@
-import * as PIXI from 'pixi.js'
+// This is to maybe have more completion on your IDE, vscode handles it fines without
+// import * as PIXI from 'pixi.js'
 
 const app = new PIXI.Application({
     width: 1024,

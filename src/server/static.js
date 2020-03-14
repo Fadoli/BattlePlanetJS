@@ -1,21 +1,46 @@
 const fs = require('fs');
 const path = require('path');
 
+const log = console.log;
+
+let dir = __dirname;
+if ( dir.endsWith("server") ) {
+    dir = path.dirname(dir);
+}
+dir = path.join(dir, 'client');
+
+
+
+function reportMissingFile ( filepath ) {
+    log(`Could not find file at ${filepath}`);
+}
+function getLocalFile (req,res)  {
+    const data = {
+        url: req.originalUrl,
+        query: req.query,
+        params: req.params,
+    }
+    if (data.url.includes('..')) {
+        res.status(404).send();
+    } else {
+        res.sendFile(dir + data.url);
+    }
+};
+
 module.exports = {
-
+    
     init(app) {
-
-        let dir = __dirname;
-        if ( dir.endsWith("/server") ) {
-            dir = path.dirname(dir);
-        }
-
+        
+        
+        /*
         // This decides where the script is on the hard-drive !
-        let scriptPath = dir + '/client/_script.js';
+        let scriptPath = path.join(dir, 'client', 'scripts.compiled.js');
         if (!fs.existsSync(scriptPath)) {
-            scriptPath = dir + '/client/_script.min.js';
+            reportMissingFile(scriptPath);
+            scriptPath = path.join(dir, 'client', 'scripts.compiled.js');
             if (!fs.existsSync(scriptPath)) {
-                console.log("Please build your project !");
+                reportMissingFile(scriptPath);
+                log("Could not find client binary, please built your project !");
                 return 1;
             }
         }
@@ -23,22 +48,14 @@ module.exports = {
         app.get('/main.js', function (req, res) {
             res.sendFile(scriptPath);
         });
-
-        app.get('/', function (req, res) {
-            res.sendFile(dir + '/client/index.html');
+        */
+        
+        app.get('/', function(req,res) {
+            res.sendFile(path.join(dir,"index.html"));
         });
-        app.get('/res/*', function (req, res) {
-            const data = {
-                url: req.originalUrl,
-                query: req.query,
-                params: req.params,
-            }
-            if (data.url.includes('..')) {
-                res.status(404).send();
-            } else {
-                res.sendFile(dir + '/client' + data.url);
-            }
-        });
+        app.get('/src/*', getLocalFile);
+        app.get('/res/*', getLocalFile);
+        app.get('/lib/*', getLocalFile);
     }
 }
 

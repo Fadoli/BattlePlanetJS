@@ -7,11 +7,12 @@ import builtins from 'rollup-plugin-node-builtins';
 import { terser } from 'rollup-plugin-terser';
 
 export default [
+    /*
     {
         input: 'src/client/index.js',
         output: [
-            { file: '.bin/client/_script.min.js', format: 'cjs' },
-            { file: 'src/client/_script.js', format: 'cjs' },
+            { file: '.bin/client/scripts.compiled.min.js', format: 'cjs' },
+            { file: 'src/client/scripts.compiled.js', format: 'cjs' },
         ],
         plugins: [
             progress(),
@@ -32,10 +33,12 @@ export default [
                 targets: [
                     { src: 'src/client/index.html', dest: '.bin/client' },
                     { src: 'src/client/res/*', dest: '.bin/client/res' },
+                    { src: 'src/client/lib/*', dest: '.bin/client/lib' },
                 ]
             })
         ]
     },
+    */
     {
         input: 'src/index.js',
         output: [
@@ -52,6 +55,11 @@ export default [
             resolve({
                 preferBuiltins: true,
             }),
+            copy({
+                targets: [
+                    { src: 'src/client', dest: '.bin/client' },
+                ]
+            })
         ]
     }
 ];
