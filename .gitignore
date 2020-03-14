@@ -1,5 +1,7 @@
+# Ignore common dirs (hiddens, and node_modules)
 node_modules/
 .*/
 _*.js
 
+# We don't want to get the coverage data out there
 lcov.info

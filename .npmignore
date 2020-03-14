@@ -1,2 +1,6 @@
+# Don't get anyfile that is hidden !
 .*/
 .*
+
+# We don't want to get the coverage data out there
+lcov.info
