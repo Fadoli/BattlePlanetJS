@@ -55,7 +55,7 @@ module.exports = {
                     if (user.isInGame()) {
                         user.game.sendChat(display);
                     } else {
-                        notifyUserInLoby((anotherUser) => anotherUser.sendChat(msg));
+                        notifyUserInLoby((anotherUser) => anotherUser.sendChat(display));
                     }
                 } catch (e) {
                     log("FAILED chat : " + e)
