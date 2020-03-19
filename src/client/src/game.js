@@ -49,9 +49,6 @@ function checkResize () {
     const w = elem.offsetWidth;
     resize(w,h)
 }
-$( document ).ready(() => {
-    checkResize();
-});
 window.onresize = (ev) => {
     checkResize();
 };
@@ -102,38 +99,32 @@ const dudeBoundsPadding = 100;
 
 let tick = 0;
 
+let dudeBounds = new PIXI.Rectangle( -dudeBoundsPadding, -dudeBoundsPadding, app.screen.width + 2*dudeBoundsPadding, app.screen.height + 2*dudeBoundsPadding);
+
 app.ticker.add(() => {
-    
-    const dudeBounds = new PIXI.Rectangle(
-        -dudeBoundsPadding,
-        -dudeBoundsPadding,
-        app.screen.width + 2*dudeBoundsPadding,
-        app.screen.height + 2*dudeBoundsPadding);
+    // iterate through the sprites and update their position
+    for (let i = 0; i < maggots.length; i++) {
+        const dude = maggots[i];
+        dude.scale.y = 0.95 + Math.sin(tick + dude.offset) * 0.05;
+        dude.direction += dude.turningSpeed * 0.01;
+        dude.x += Math.sin(dude.direction) * (dude.speed * dude.scale.y);
+        dude.y += Math.cos(dude.direction) * (dude.speed * dude.scale.y);
+        dude.rotation = -dude.direction + Math.PI;
         
-        // iterate through the sprites and update their position
-        for (let i = 0; i < maggots.length; i++) {
-            const dude = maggots[i];
-            dude.scale.y = 0.95 + Math.sin(tick + dude.offset) * 0.05;
-            dude.direction += dude.turningSpeed * 0.01;
-            dude.x += Math.sin(dude.direction) * (dude.speed * dude.scale.y);
-            dude.y += Math.cos(dude.direction) * (dude.speed * dude.scale.y);
-            dude.rotation = -dude.direction + Math.PI;
-            
-            // wrap the maggots
-            if (dude.x < dudeBounds.x) {
-                dude.x += dudeBounds.width;
-            } else if (dude.x > dudeBounds.x + dudeBounds.width) {
-                dude.x -= dudeBounds.width;
-            }
-            
-            if (dude.y < dudeBounds.y) {
-                dude.y += dudeBounds.height;
-            } else if (dude.y > dudeBounds.y + dudeBounds.height) {
-                dude.y -= dudeBounds.height;
-            }
+        // wrap the maggots
+        if (dude.x < dudeBounds.x) {
+            dude.x += dudeBounds.width;
+        } else if (dude.x > dudeBounds.x + dudeBounds.width) {
+            dude.x -= dudeBounds.width;
         }
         
-        // increment the ticker
-        tick += 0.1;
-    });
+        if (dude.y < dudeBounds.y) {
+            dude.y += dudeBounds.height;
+        } else if (dude.y > dudeBounds.y + dudeBounds.height) {
+            dude.y -= dudeBounds.height;
+        }
+    }
     
+    // increment the ticker
+    tick += 0.1;
+});

@@ -18,9 +18,12 @@ $(function () {
         if (!gameId) {
             $('#lobby').show();
             $('#gameRender').hide();
+            app.stop();
         } else {
             $('#lobby').hide();
             $('#gameRender').show();
+            app.start();
+            checkResize();
         }
     }
     updateUser();
