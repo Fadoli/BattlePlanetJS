@@ -54,11 +54,14 @@ $(function () {
         return false;
     });
     socket.on('chat', function (msg) {
-        const array = $('#messages').children();
+        const messages = $('#messages');
+        const array = messages.children();
         if (array.length > 50) {
-            array[array.length - 1].remove();
+            array[0].remove();
         }
-        $('#messages').prepend($('<li>').text(msg));
+        messages.append($('<li>').text(msg));
+        const side = $('#side')
+        side.scrollTop(side.prop('scrollHeight'));
     });
     
     // Game (list) managing here !
@@ -74,8 +77,6 @@ $(function () {
         gameId = uuid;
         updateGame();
     });
-    function addServer(game) {
-    }
     socket.on('lobbyJoin', function () {
         gameId = undefined;
         updateGame();

@@ -31,11 +31,11 @@ body {
     margin: none;
     display: inline-block;
     min-height: 400px;
-    height: calc( 100vh - 3em );
+    height: calc( 100vh - 3px );
     overflow: hidden;
 }
 
-#lobby, #side {
+#lobby {
     overflow-y: auto;
 }
 #main {
@@ -45,15 +45,21 @@ body {
     width: calc( 25% - 5px );
 }
 
+#chat {
+    height: 27px;
+}
 #messages {
     list-style-type: none;
     margin: 0;
     padding: 0;
-    background: #aaa;
+    min-height: calc( 100vh - 27px );
+    background: #222;
 }
+
 
 #messages li {
     padding: 5px 10px;
+    background: #888;
 }
 
 #messages li:nth-child(odd) {
@@ -62,7 +68,6 @@ body {
 
 form {
     background: #111111;
-    padding: 3px;
     width: 100%;
 }
 
@@ -76,20 +81,15 @@ form input {
     border: none;
     padding: 5px;
     width: 90%;
-    margin-right: .7%;
 }
 
 form button {
-    width: 9%;
+    width: 10%;
     background: rgb(130, 224, 255);
     border: none;
     padding: 5px;
 }
 
 body {
-    background: #808080;
-}
-
-#chat {
-    height: 3em;
+    background: #111111;
 }
