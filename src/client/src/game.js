@@ -1,4 +1,4 @@
-// This is to maybe have more completion on your IDE, vscode handles it fines without
+// This is to maybe have more completion on your IDE
 // import * as PIXI from 'pixi.js'
 
 const defaultSize = {

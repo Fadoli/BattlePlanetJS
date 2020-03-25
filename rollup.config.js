@@ -3,8 +3,6 @@ import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
 import copy from 'rollup-plugin-copy';
 import progress from 'rollup-plugin-progress';
-import builtins from 'rollup-plugin-node-builtins';
-import { terser } from 'rollup-plugin-terser';
 
 export default [
     /*
@@ -45,7 +43,7 @@ export default [
             { file: '.bin/index.js', format: 'cjs' },
         ],
         external: [
-            'express',
+            // 'express',
             'socket.io'
         ],
         plugins: [
@@ -57,7 +55,7 @@ export default [
             }),
             copy({
                 targets: [
-                    { src: 'src/client', dest: '.bin/client' },
+                    { src: 'src/client', dest: '.bin' },
                 ]
             })
         ]
