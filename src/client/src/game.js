@@ -1,33 +1,22 @@
 // This is to maybe have more completion on your IDE
 // import * as PIXI from 'pixi.js'
 
+// RenderSize, populate app, and add it to the webpage
 const defaultSize = {
     width: 1024,
     height: 700,
 }
-
 const app = new PIXI.Application({
     backgroundColor: 0x111111,
     width: defaultSize.width,
     height: defaultSize.height
 });
-
-
 $("#gameRender").append(app.view);
 
-const sprites = new PIXI.ParticleContainer(10000, {
-    scale: true,
-    position: true,
-    rotation: true,
-    uvs: true,
-    alpha: true,
-});
-app.stage.addChild(sprites);
+// Add Resize events
 let lastUpdate;
-
 function resize(w,h) {
     if ( Date.now() - lastUpdate < 100 ) {
-        console.log("ANTI SPAM !")
         return;
     }
     lastUpdate = Date.now();
@@ -41,21 +30,34 @@ function resize(w,h) {
     app.view.style.width = width + 'px';
     app.view.style.height = height + 'px';
 }
-
-
 function checkResize () {
     const elem = document.getElementById("main");
     const h = elem.offsetHeight;
     const w = elem.offsetWidth;
     resize(w,h)
 }
-window.onresize = (ev) => {
+window.onresize = () => {
     checkResize();
 };
 
+// Create sprite holder, 5000 should be plenty
+const sprites = new PIXI.ParticleContainer(5000, {
+    scale: true,
+    position: true,
+    rotation: true,
+    uvs: true,
+    alpha: true,
+});
+// Add the damn sprites to the display
+app.stage.addChild(sprites);
+
 // create an array to store all the sprites
 const maggots = [];
-
+// Check if we're running on Webgl
+if ( app.renderer instanceof PIXI.Renderer ) { } else {
+    // Shit it's some low web-browser shit which performance might be real bad
+    
+}
 const totalSprites = app.renderer instanceof PIXI.Renderer ? 5000 : 100;
 
 for (let i = 0; i < totalSprites; i++) {
