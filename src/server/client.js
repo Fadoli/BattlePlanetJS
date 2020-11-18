@@ -12,6 +12,10 @@ class Client {
         this.name = "unnamed";
     }
 
+    getUserName() {
+        return `${this.name}:${this.token}`;
+    }
+
     /**
      * Register the UUID of a client
      * @param {string} uuid
@@ -66,7 +70,7 @@ class Client {
         this.game = instance;
 
         // First notify users
-        console.log(`${this.name} is joining ${this.game.name}`);
+        console.log(`${this.getUserName()} is joining ${this.game.name}`);
         this.sendChat(`You joined the server ${this.game.name}`);
         this.game.sendChat(`${this.name} joined the game`);
 

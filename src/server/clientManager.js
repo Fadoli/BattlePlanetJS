@@ -40,7 +40,7 @@ module.exports = {
 
             // Mixed ingame and inlobby
             socket.on('chat', function (msg) {
-                if (!user.name) {
+                if (!user.token || !user.name) {
                     // We don't want to do anything
                     socket.emit('error', 'not connected');
                     return;
