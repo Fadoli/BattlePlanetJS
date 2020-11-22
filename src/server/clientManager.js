@@ -1,5 +1,5 @@
 const Client = require("./client").Client;
-const GameManager = require("../game/gameManager").GameManager;
+const GameManager = require("./game/gameManager").GameManager;
 const util = require("../utils");
 
 function log(str) {
@@ -64,7 +64,7 @@ module.exports = {
 
             socket.on('gameCreate', function (opts) {
                 try {
-                    const game = GameManager.createGame(user, opts.name)
+                    const game = GameManager.createGame(user, opts.name, opts.game)
                     user.moveToGame(game);
                     notifyUserInLoby((anotherUser) => anotherUser.notifyNewLobbyGame(game));
                 } catch (e) {

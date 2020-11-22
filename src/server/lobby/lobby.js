@@ -1,20 +1,16 @@
-const Client = require('../server/client').Client;
-const util = require("../utils");
+const Client = require('../client').Client;
+const util = require("../../utils");
 
-const objectTool = require('./lib/physicalObject');
 
-const Map = require('./world').Map;
-const games = {};
 
 /**
- * Describe the class that handle the map and players
+ * This class handles the lobby : players first join a lobby before being in a game
  * @export
  * @class gameManager
  */
-class GameManager {
-
+class Lobby {
     /**
-     * Creates an instance of GameManager.
+     * Creates an instance of LobyManager.
      * @param {Client} owner
      * @param {string} name
      * @memberof GameManager
@@ -30,26 +26,6 @@ class GameManager {
          */
         this.players = {};
         this.addPlayer(owner);
-    }
-
-
-    /**
-     * Start the tick interval, and create the map for the players :)
-     * @memberof GameManager
-     */
-    start() {
-        const mapSize = 600 + 100 * players.length;
-        this.map = new Map(mapSize);
-        this.tick = setInterval(() => this.map.tick())
-    }
-
-    /**
-     * Cleanup the tick interval
-     * @memberof GameManager
-     */
-    stop () {
-        clearInterval(this.tick);
-        this.tick = undefined;
     }
 
     /**
@@ -109,7 +85,7 @@ class GameManager {
      * @returns {GameManager}
      * @memberof GameManager
      */
-    static createGame(owner, name) {
+    static createGame(owner, name, gameOptions) {
         const newGame = new GameManager(owner, name);
         games[newGame.uuid] = newGame;
         return newGame;
@@ -135,5 +111,5 @@ class GameManager {
 }
 
 module.exports = {
-    GameManager: GameManager,
+    Lobby
 }

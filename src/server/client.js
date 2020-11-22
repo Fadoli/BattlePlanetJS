@@ -1,4 +1,4 @@
-const GameManager = require("../game/gameManager").GameManager;
+const GameManager = require("./game/gameManager").GameManager;
 
 /**
  * @export
