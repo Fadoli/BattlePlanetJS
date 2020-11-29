@@ -1,4 +1,5 @@
 const GameManager = require("./game/gameManager").GameManager;
+const LobbyManager = require('./lobby');
 
 /**
  * @export
@@ -8,7 +9,10 @@ class Client {
     constructor(socket) {
         this.socket = socket;
         this.token = undefined;
-        this.game = undefined;
+        /**
+         * @type {}
+         */
+        this.lobby = undefined;
         this.name = "unnamed";
     }
 
@@ -30,13 +34,13 @@ class Client {
         })
         this.name = name;
         register(this);
-        if (previous && previous.isInGame())
+        if (previous && previous.isInLobby())
         {
-            this.moveToGame(previous.game);
+            this.moveToLobby(previous.lobby);
         }
         else 
         {
-            this.moveToLobby();
+            this.moveToServerList();
         }
     }
     /**
@@ -57,8 +61,8 @@ class Client {
      * @returns {boolean}
      * @memberof Client
      */
-    isInGame() {
-        return (this.game !== undefined);
+    isInLobby() {
+        return (this.lobby !== undefined);
     }
 
     /**
@@ -66,18 +70,18 @@ class Client {
      * @param {Game} a game instance
      * @memberof Client
      */
-    moveToGame( instance ) {
-        this.game = instance;
+    moveToLobby( instance ) {
+        this.lobby = instance;
 
         // First notify users
-        console.log(`${this.getUserName()} is joining ${this.game.name}`);
-        this.sendChat(`You joined the server ${this.game.name}`);
-        this.game.sendChat(`${this.name} joined the game`);
+        console.log(`${this.getUserName()} is joining ${this.lobby.name}`);
+        this.sendChat(`You joined the server ${this.lobby.name}`);
+        this.lobby.sendChat(`${this.name} joined the game`);
 
-        this.game.addPlayer(this);
+        this.lobby.addPlayer(this);
         
 
-        this.socket.emit('gameJoin', this.game.uuid);
+        this.socket.emit('lobbyJoin', this.lobby.uuid);
     }
 
     /**
@@ -85,15 +89,15 @@ class Client {
      * @memberof Client
      * @returns {any} Either a game if it's a game end, otherwise nothing
      */
-    moveToLobby() {
+    moveToServerList() {
         let output = undefined;
-        if (this.isInGame()) {
+        if (this.isInLobby()) {
             // this function return itself if it was the last user
-            output = this.game.removePlayer(this);
-            this.game = undefined;
+            output = this.lobby.removePlayer(this);
+            this.lobby = undefined;
         }
-        this.socket.emit("lobbyJoin");
-        this.notifyLobbyGames();
+        this.socket.emit("lobbyListJoin");
+        this.getLobbiesForUser();
         return output;
     }
 
@@ -101,14 +105,14 @@ class Client {
      * Sends current game to user
      * @memberof Client
      */
-    notifyLobbyGames() {
-        const games = GameManager.getGames();
+    getLobbiesForUser() {
+        const lobbies = LobbyManager.getPublic();
         const gameUserList = [];
-        for (const game of games) {
+        for (const lobby of lobbies) {
             gameUserList.push({
-                uuid: game.uuid,
-                name: game.name,
-                count: game.playerCount()
+                uuid: lobby.uuid,
+                name: lobby.name,
+                count: lobby.playerCount()
             })
         }
         this.socket.emit("lobbyUpdate", {
@@ -160,8 +164,8 @@ class Client {
      * @returns {Array<Client>}
      * @memberof Client
      */
-    static getUserInLoby() {
-        return getUserInLoby();
+    static getUserInServerList() {
+        return getUserInServerList();
     }
 
     /**
@@ -199,14 +203,14 @@ function unregister(client) {
  * Returns the list of clients that are not in a game
  * @returns Array<Client>
  */
-function getUserInLoby() {
+function getUserInServerList() {
     const arr = [];
     const mapItems = Object.values(clientMap);
     for (const user of mapItems) {
         if (!user) {
             continue;
         }
-        if (!user.isInGame()) {
+        if (!user.isInLobby()) {
             arr.push(user);
         }
     }

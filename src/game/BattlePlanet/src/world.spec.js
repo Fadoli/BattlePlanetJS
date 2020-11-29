@@ -1,6 +1,6 @@
 require('tap').mochaGlobals()
 const should = require('should')
-const Map = require('../../src/game/world').Map;
+const Map = require('./world').Map;
 
 const clone = (obj) => {
     return JSON.parse(JSON.stringify(obj));

@@ -4,7 +4,7 @@
   "description": "A set of client+server for space battle",
   "main": "./.bin/index.js",
   "scripts": {
-    "test": "tap ./test/**/*.test.js --reporter=spec",
+    "test": "tap ./src/**/*.spec.js --reporter=spec",
     "posttest": "tap --coverage-report=text-lcov > ./lcov.info",
     "start-prod": "node ./.bin/index.js",
     "start": "node ./src/index.js",

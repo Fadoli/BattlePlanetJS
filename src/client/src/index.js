@@ -65,19 +65,19 @@ $(function () {
     });
     
     // Game (list) managing here !
-    $('form#gameForm').submit(function (e) {
+    $('form#lobbyForm').submit(function (e) {
         e.preventDefault(); // prevents page reloading
-        socket.emit('gameCreate', {
-            name: $('#gameInput').val()
+        socket.emit('lobbyCreate', {
+            name: $('#lobbyNameInput').val()
         });
-        $('#gameInput').val('');
+        $('#lobbyNameInput').val('');
         return false;
     });
-    socket.on('gameJoin', function (uuid) {
+    socket.on('lobbyJoin', function (uuid) {
         gameId = uuid;
         updateGame();
     });
-    socket.on('lobbyJoin', function () {
+    socket.on('lobbyListJoin', function () {
         gameId = undefined;
         updateGame();
     });
@@ -103,7 +103,7 @@ $(function () {
                 const local = $(`<div id="${game.uuid}" class="gameListing">`);
                 local.text(`${game.name} ${game.count} (${game.uuid})`)
                 local.on('click', () => {
-                    socket.emit('gameJoin', {
+                    socket.emit('lobbyJoin', {
                         uuid: game.uuid
                     });
                 })

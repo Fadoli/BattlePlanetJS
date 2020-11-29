@@ -1,5 +1,6 @@
 const Client = require("./client").Client;
 const GameManager = require("./game/gameManager").GameManager;
+const LobbyManager = require('./lobby');
 const util = require("../utils");
 
 function log(str) {
@@ -7,13 +8,17 @@ function log(str) {
 }
 
 function notifyUserInLoby(cb) {
-    const users = Client.getUserInLoby();
+    const users = Client.getUserInServerList();
     for (const user of users) {
         cb(user)
     }
 }
 
-function userLeaveGame (user) {
+/**
+ * @description
+ * @param {Client} user 
+ */
+function userLeaveLobby (user) {
     const res = user.moveToLobby();
     if (res) {
         notifyUserInLoby((usr) => usr.notifyEndLobbyGame(res))
@@ -46,14 +51,14 @@ module.exports = {
                     return;
                 }
                 if (msg === '/leave') {
-                    userLeaveGame(user);
+                    userLeaveLobby(user);
                     return;
                 }
                 try {
                     const display = `${user.name} : ${msg}`;
                     log(display);
-                    if (user.isInGame()) {
-                        user.game.sendChat(display);
+                    if (user.isInLobby()) {
+                        user.lobby.sendChat(display);
                     } else {
                         notifyUserInLoby((anotherUser) => anotherUser.sendChat(display));
                     }
@@ -62,28 +67,29 @@ module.exports = {
                 }
             });
 
-            socket.on('gameCreate', function (opts) {
+            socket.on('lobbyCreate', function (opts) {
                 try {
-                    const game = GameManager.createGame(user, opts.name, opts.game)
-                    user.moveToGame(game);
-                    notifyUserInLoby((anotherUser) => anotherUser.notifyNewLobbyGame(game));
+                    LobbyManager.create()
+                    const game = GameManager.createLobby(user, opts.name, opts.game)
+                    user.moveToServerList(game);
+                    notifyUserInLoby((anotherUser) => anotherUser.notifyNewLobby(game));
                 } catch (e) {
-                    log("FAILED gameCreate : " + e)
+                    log("FAILED lobbyCreate : " + e)
                 }
             });
-            socket.on('gameJoin', function (gameData) {
+            socket.on('lobbyListJoin', function (gameData) {
                 try {
-                    const game = GameManager.getGame(gameData.uuid);
-                    user.moveToGame(game);
+                    const game = GameManager.getLobby(gameData.uuid);
+                    user.moveToLobby(game);
                 } catch (e) {
-                    log("FAILED gameJoin : " + e)
+                    log("FAILED lobbyListJoin : " + e)
                 }
             });
 
-            socket.on('gameLeave', function (opts) {
-                userLeaveGame(user);
+            socket.on('lobbyLeave', function (opts) {
+                userLeaveLobby(user);
             });
-            socket.on('gameUpdate', function (msg) {
+            socket.on('lobbyUpdate', function (msg) {
                 log('message: ' + msg);
             });
         });
