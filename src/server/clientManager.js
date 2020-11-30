@@ -7,7 +7,7 @@ function log(str) {
     console.log("[CLIENT MANAGER] : " + str);
 }
 
-function notifyUserInLoby(cb) {
+function notifyUserInLobbyList(cb) {
     const users = Client.getUserInServerList();
     for (const user of users) {
         cb(user)
@@ -19,9 +19,9 @@ function notifyUserInLoby(cb) {
  * @param {Client} user 
  */
 function userLeaveLobby (user) {
-    const res = user.moveToLobby();
+    const res = user.moveToServerList();
     if (res) {
-        notifyUserInLoby((usr) => usr.notifyEndLobbyGame(res))
+        notifyUserInLobbyList((usr) => usr.notifyEndLobbyGame(res))
     }
 }
 
@@ -60,7 +60,7 @@ module.exports = {
                     if (user.isInLobby()) {
                         user.lobby.sendChat(display);
                     } else {
-                        notifyUserInLoby((anotherUser) => anotherUser.sendChat(display));
+                        notifyUserInLobbyList((anotherUser) => anotherUser.sendChat(display));
                     }
                 } catch (e) {
                     log("FAILED chat : " + e)
@@ -69,18 +69,21 @@ module.exports = {
 
             socket.on('lobbyCreate', function (opts) {
                 try {
-                    LobbyManager.create()
-                    const game = GameManager.createLobby(user, opts.name, opts.game)
-                    user.moveToServerList(game);
-                    notifyUserInLoby((anotherUser) => anotherUser.notifyNewLobby(game));
+                    const lobby = LobbyManager.create({
+                        owner: user,
+                        name: opts.name,
+                        game: opts.game,
+                    })
+                    user.moveToLobby(lobby);
+                    notifyUserInLobbyList((anotherUser) => anotherUser.notifyNewLobby(lobby));
                 } catch (e) {
                     log("FAILED lobbyCreate : " + e)
                 }
             });
             socket.on('lobbyListJoin', function (gameData) {
                 try {
-                    const game = GameManager.getLobby(gameData.uuid);
-                    user.moveToLobby(game);
+                    const lobby = LobbyManager.getLobby(gameData.uuid);
+                    user.moveToLobby(lobby);
                 } catch (e) {
                     log("FAILED lobbyListJoin : " + e)
                 }

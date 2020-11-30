@@ -96,7 +96,6 @@ class Client {
             this.lobby = undefined;
         }
         this.socket.emit("lobbyListJoin");
-        this.getLobbiesForUser();
         return output;
     }
 

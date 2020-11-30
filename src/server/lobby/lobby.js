@@ -15,10 +15,11 @@ class Lobby {
      * @param {string} name
      * @memberof Lobby
      */
-    constructor(owner, name) {
+    constructor({owner, name, onLobbyEnd} = {}) {
         this.owner = owner;
         this.uuid = util.uuidv4();
         this.name = name;
+        this.onLobbyEnd = onLobbyEnd;
         this.tick = undefined;
 
         /** 
@@ -44,7 +45,7 @@ class Lobby {
     removePlayer(player) {
         delete this.players[player.token];
         if (this.playerCount() === 0) {
-            Lobby.stopGame(this);
+            Lobby.stopLobby(this);
             return this;
         }
     }
@@ -59,8 +60,8 @@ class Lobby {
     }
 
     /**
-     *
-     * @static
+     * @description send a message to the whole lobby
+     * @param {string} msg 
      * @memberof Lobby
      */
     sendChat (msg) {
@@ -70,28 +71,28 @@ class Lobby {
         }
     }
     /**
-     * Stop a server
+     * @description Stop a server
      * @static
-     * @param {Lobby} game
+     * @param {Lobby} lobby
      * @memberof Lobby
      */
-    static stopGame (game) {
-        game.stop();
-        delete games[game.uuid];
+    static stopLobby (lobby) {
+        // lobby.stop();
+        this.onLobbyEnd(this);
     }
     /**
-     * Create a game
+     * @description Create a lobby
      * @static
      * @returns {Lobby}
      * @memberof Lobby
      */
-    static createGame(owner, name, gameOptions) {
+    static createLobby(owner, name, gameOptions) {
         const newGame = new Lobby(owner, name);
         games[newGame.uuid] = newGame;
         return newGame;
     }
     /**
-     * Get a specific game
+     * @description Get a specific lobby
      * @static
      * @returns {Lobby}
      * @memberof Lobby
