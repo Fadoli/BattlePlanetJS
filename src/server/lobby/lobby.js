@@ -13,7 +13,7 @@ class Lobby {
      * Creates an instance of LobyManager.
      * @param {Client} owner
      * @param {string} name
-     * @memberof GameManager
+     * @memberof Lobby
      */
     constructor(owner, name) {
         this.owner = owner;
@@ -30,7 +30,7 @@ class Lobby {
 
     /**
      * Add a player to the game
-     * @memberof GameManager
+     * @memberof Lobby
      */
     addPlayer(player) {
         this.players[player.token] = player;
@@ -39,12 +39,12 @@ class Lobby {
     /**
      * Remove a player to the game
      * @param {Client} player
-     * @memberof GameManager
+     * @memberof Lobby
      */
     removePlayer(player) {
         delete this.players[player.token];
         if (this.playerCount() === 0) {
-            GameManager.stopGame(this);
+            Lobby.stopGame(this);
             return this;
         }
     }
@@ -52,7 +52,7 @@ class Lobby {
     /**
      * return the number of player
      * @returns {number}
-     * @memberof GameManager
+     * @memberof Lobby
      */
     playerCount() {
         return Object.keys(this.players).length;
@@ -61,7 +61,7 @@ class Lobby {
     /**
      *
      * @static
-     * @memberof GameManager
+     * @memberof Lobby
      */
     sendChat (msg) {
         const players = Object.values(this.players);
@@ -72,8 +72,8 @@ class Lobby {
     /**
      * Stop a server
      * @static
-     * @param {GameManager} game
-     * @memberof GameManager
+     * @param {Lobby} game
+     * @memberof Lobby
      */
     static stopGame (game) {
         game.stop();
@@ -82,19 +82,19 @@ class Lobby {
     /**
      * Create a game
      * @static
-     * @returns {GameManager}
-     * @memberof GameManager
+     * @returns {Lobby}
+     * @memberof Lobby
      */
     static createGame(owner, name, gameOptions) {
-        const newGame = new GameManager(owner, name);
+        const newGame = new Lobby(owner, name);
         games[newGame.uuid] = newGame;
         return newGame;
     }
     /**
      * Get a specific game
      * @static
-     * @returns {GameManager}
-     * @memberof GameManager
+     * @returns {Lobby}
+     * @memberof Lobby
      */
     static getGame(uuid) {
         return games[uuid];
@@ -102,8 +102,8 @@ class Lobby {
     /**
      * Get all the current games
      * @static
-     * @returns {Array<GameManager>}
-     * @memberof GameManager
+     * @returns {Array<Lobby>}
+     * @memberof Lobby
      */
     static getGames() {
         return Object.values(games);
