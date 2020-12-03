@@ -1,12 +1,10 @@
 const Client = require('../client').Client;
 const util = require("../../utils");
 
-
-
 /**
  * This class handles the lobby : players first join a lobby before being in a game
  * @export
- * @class gameManager
+ * @class Lobby
  */
 class Lobby {
     /**
@@ -31,6 +29,7 @@ class Lobby {
 
     /**
      * Add a player to the game
+     * @param {Client} player
      * @memberof Lobby
      */
     addPlayer(player) {
@@ -69,45 +68,6 @@ class Lobby {
         for (const player of players) {
             player.sendChat(msg);
         }
-    }
-    /**
-     * @description Stop a server
-     * @static
-     * @param {Lobby} lobby
-     * @memberof Lobby
-     */
-    static stopLobby (lobby) {
-        // lobby.stop();
-        this.onLobbyEnd(this);
-    }
-    /**
-     * @description Create a lobby
-     * @static
-     * @returns {Lobby}
-     * @memberof Lobby
-     */
-    static createLobby(owner, name, gameOptions) {
-        const newGame = new Lobby(owner, name);
-        games[newGame.uuid] = newGame;
-        return newGame;
-    }
-    /**
-     * @description Get a specific lobby
-     * @static
-     * @returns {Lobby}
-     * @memberof Lobby
-     */
-    static getGame(uuid) {
-        return games[uuid];
-    }
-    /**
-     * Get all the current games
-     * @static
-     * @returns {Array<Lobby>}
-     * @memberof Lobby
-     */
-    static getGames() {
-        return Object.values(games);
     }
 }
 

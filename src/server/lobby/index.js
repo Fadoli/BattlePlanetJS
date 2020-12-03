@@ -1,8 +1,8 @@
 const Lobby = require('./lobby').Lobby;
 const Client = require('../client').Client;
 
-const private = {};
-const public = {};
+const privateList = {};
+const publicList = {};
 
 /**
 * @typedef {Object} LobbyOptions
@@ -16,8 +16,8 @@ const public = {};
  * @param {Lobby} lobby 
  */
 function OnLobbyEnd (lobby) {
-    delete public[lobby.uuid];
-    delete private[lobby.uuid];
+    delete publicList[lobby.uuid];
+    delete privateList[lobby.uuid];
 }
 
 module.exports = {
@@ -29,9 +29,9 @@ module.exports = {
         lobbyOptions.OnLobbyEnd = OnLobbyEnd;
         const lob = new Lobby(lobbyOptions);
         if (lobbyOptions.isPublic) {
-            public[lob.uuid] = lob;
+            publicList[lob.uuid] = lob;
         } else {
-            private[lob.uuid] = lob;
+            privateList[lob.uuid] = lob;
         }
         return lob;
     },
@@ -41,13 +41,13 @@ module.exports = {
      * @returns {Array<Lobby>}
      */
     getPublic() {
-        return Object.values(public);
+        return Object.values(publicList);
     },
     /**
      * @description Get all the current public games
      * @returns {Array<Lobby>}
      */
     getLobby(uid) {
-        return private[uid] || public[uid];
+        return privateList[uid] || publicList[uid];
     },
 }

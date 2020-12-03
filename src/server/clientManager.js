@@ -1,5 +1,4 @@
 const Client = require("./client").Client;
-const GameManager = require("./game/gameManager").GameManager;
 const LobbyManager = require('./lobby');
 const util = require("../utils");
 

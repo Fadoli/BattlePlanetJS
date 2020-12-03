@@ -20,7 +20,7 @@ describe("/server/Lobby", () => {
         randomPlayer = {
             token: 'a player'
         };
-        lobby = new Lobby(creator, 'game', 'my fist game')
+        lobby = new Lobby({owner: creator, name:'my first game'})
     });
 
     it("by default the owner is a player", () => {
