@@ -1,0 +1,15 @@
+{
+    "maxPlayer" : 16,
+    "minPlayer" : 2,
+    "options" : {
+        "asteroidDifficulty" : {
+            "type": "number",
+            "from": 0,
+            "to": 256
+        },
+        "gamemode" : {
+            "type": "list",
+            "entries": ["default"]
+        }
+    }
+}
