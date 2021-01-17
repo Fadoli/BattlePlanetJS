@@ -91,12 +91,10 @@ class Client {
     moveToServerList() {
         let output = undefined;
         if (this.isInLobby()) {
-            // this function return itself if it was the last user
-            output = this.lobby.removePlayer(this);
+            this.lobby.removePlayer(this);
             this.lobby = undefined;
         }
         this.socket.emit("lobbyListJoin");
-        return output;
     }
 
     /**

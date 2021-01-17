@@ -44,8 +44,11 @@ class Lobby {
     removePlayer(player) {
         delete this.players[player.token];
         if (this.playerCount() === 0) {
-            Lobby.stopLobby(this);
-            return this;
+            if (this.onLobbyEnd) {
+                this.onLobbyEnd(this);
+            } else {
+                console.log("OnLobbyEnd undefined !");
+            }
         }
     }
 

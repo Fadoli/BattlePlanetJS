@@ -6,7 +6,7 @@ const clone = (obj) => {
     return JSON.parse(JSON.stringify(obj));
 }
 
-describe("/server/Lobby", () => {
+describe("/server/lobby/lobby", () => {
 
     let creator, randomPlayer;
     /**

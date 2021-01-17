@@ -1,8 +1,8 @@
 const Lobby = require('./lobby').Lobby;
 const Client = require('../client').Client;
 
-const privateList = {};
-const publicList = {};
+let privateList = {};
+let publicList = {};
 
 /**
 * @typedef {Object} LobbyOptions
@@ -25,7 +25,7 @@ module.exports = {
      * @description create a lobby with the given options
      * @param {LobbyOptions} lobbyOptions
      */
-    create(lobbyOptions) {
+    create(lobbyOptions = {}) {
         lobbyOptions.OnLobbyEnd = OnLobbyEnd;
         const lob = new Lobby(lobbyOptions);
         if (lobbyOptions.isPublic) {
@@ -44,10 +44,17 @@ module.exports = {
         return Object.values(publicList);
     },
     /**
-     * @description Get all the current public games
-     * @returns {Array<Lobby>}
+     * @description Get the lobby with a given UID (either public or private)
+     * @returns {Lobby}
      */
     getLobby(uid) {
         return privateList[uid] || publicList[uid];
     },
+    /**
+     * @description Reset the internal lists : this is for test only !
+     */
+    empty() {
+        privateList = {};
+        publicList = {};
+    }
 }
