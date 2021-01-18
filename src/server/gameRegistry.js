@@ -14,6 +14,7 @@ const path = require('path');
 * @typedef {Object} GameOptions
 * @property {string} name
 * @property {Object} options
+* @property {number} options.minPlayer
 * @property {number} options.maxPlayer
 */
 
@@ -25,8 +26,12 @@ function requireUncached(module) {
 /**
  * @type {Object.<string,GameData>}
  */
-const games = {};
+let games = {};
 module.exports = {
+    /**
+     * Returns the list of all games
+     * @returns {Object.<string,GameData>}
+     */
     gamesList() {
         return games;
     },
@@ -43,14 +48,23 @@ module.exports = {
      * @param {GameOptions} gameOptions
      */
     createGame(gameOptions) {
-        return games[gameOptions.name].server(gameOptions.options);
+        const game = games[gameOptions.name];
+        if (!game) {
+            throw new Error(`${gameOptions.name} is not a valid game name !`);
+        }
+        if (typeof(game.server) !== 'function') {
+            throw new Error(`${gameOptions.name} is invalid !`);
+        }
+        return new game.server(gameOptions.options);
+    },
+    empty() {
+        games = {};
     },
     /**
      * Loads (or re-load) all element in the directory
-     * @param {*} lobby
-     * @param {GameOptions} gameOptions
+     * @param {string} dir
      */
-    init(dir, http) {
+    init(dir) {
         const files = fs.readdirSync(dir, {withFileTypes: true});
         //console.log(files);
         files.forEach((file) => {

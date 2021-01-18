@@ -89,7 +89,6 @@ class Client {
      * @returns {any} Either a game if it's a game end, otherwise nothing
      */
     moveToServerList() {
-        let output = undefined;
         if (this.isInLobby()) {
             this.lobby.removePlayer(this);
             this.lobby = undefined;
