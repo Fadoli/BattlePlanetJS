@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const gameRegistry = require('./gameRegistry');
 
 const log = console.log;
 
@@ -23,6 +24,19 @@ function getLocalFile (req,res)  {
     if (data.url.includes('..')) {
         res.status(404).send();
     } else {
+        res.sendFile(dir + data.url);
+    }
+};
+function getGameClient (req,res)  {
+    const data = {
+        game: req.originalUrl.split('/game/')[1],
+        query: req.query,
+        params: req.params,
+    }
+    if (data.game.includes('..')) {
+        res.status(404).send();
+    } else {
+        res.send(gameRegistry.gamesList()[data.game])
         res.sendFile(dir + data.url);
     }
 };
@@ -53,6 +67,7 @@ module.exports = {
         app.get('/', function(req,res) {
             res.sendFile(path.join(dir,"index.html"));
         });
+        app.get('/game/*', getGameClient);
         app.get('/src/*', getLocalFile);
         app.get('/res/*', getLocalFile);
         app.get('/lib/*', getLocalFile);

@@ -1,12 +1,13 @@
 const express = require('express');
-const app = express();
-const server = require('http').Server(app);
-const io = require('socket.io')(server);
+const path = require('path');
 
 const staticPages = require('./static');
 const clientManager = require('./clientManager');
+const gameRegistry = require('./gameRegistry');
 
-
+const app = express();
+const server = require('http').Server(app);
+const io = require('socket.io')(server);
 
 module.exports = {
     start: () => {
@@ -18,5 +19,7 @@ module.exports = {
 
         // Handle loby and game communication
         clientManager.init(io);
+        gameRegistry.empty();
+        gameRegistry.init(path.join(__dirname,'../games'))
     }
 }
