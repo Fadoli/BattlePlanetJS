@@ -1,5 +1,5 @@
-const Client = require('../../src/server/client').Client;
-const util = require("../../src/utils");
+const Client = require('../../server/client').Client;
+const util = require("../../utils");
 
 const objectTool = require('./src/physicalObject');
 
