@@ -32,6 +32,16 @@ module.exports = {
             socket.on('setToken', function (msg) {
                 const uuid = msg.uuid;
 
+                const existingUser = Client.getUser(uuid);
+                if (existingUser) {
+                    const dif = Date.now() - existingUser.last
+                    if (dif < 250) {
+                        let newUuid = util.uuidv4();
+                        log(`Client trying to hijak the token ${uuid}, will be using : ` + newUuid);
+                        return user.register(newUuid);
+                    }
+                }
+
                 log('Client connecting with token : ' + uuid);
                 user.register(uuid, msg.username);
             });
@@ -40,6 +50,9 @@ module.exports = {
 
                 log('Client connecting with no token, will be using : ' + uuid);
                 user.register(uuid);
+            });
+            socket.on('ping', function () {
+                user.ping();
             });
 
             // Mixed ingame and inlobby

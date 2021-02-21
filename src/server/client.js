@@ -13,6 +13,11 @@ class Client {
          */
         this.lobby = undefined;
         this.name = "unnamed";
+        this.last = 0;
+    }
+
+    ping() {
+        this.last = Date.now();
     }
 
     getUserName() {
@@ -32,6 +37,7 @@ class Client {
             uuid: uuid
         })
         this.name = name;
+        this.ping();
         register(this);
         if (previous && previous.isInLobby())
         {

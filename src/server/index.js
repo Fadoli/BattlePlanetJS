@@ -13,6 +13,7 @@ module.exports = {
     start: () => {
         // Listen on port 1888
         server.listen(1888);
+        console.log('listening on http://127.0.0.1:1888/')
 
         // Serve static contents
         staticPages.init(app);
