@@ -37,6 +37,9 @@ $(function () {
         token = msg.uuid;
         localStorage.setItem('token', token);
     })
+    setInterval(() => {
+        socket.emit('ping');
+    }, 200);
     $('form#user').submit(function (e) {
         e.preventDefault(); // prevents page reloading
         username = $('#userInput').val()

@@ -14,6 +14,7 @@ class Client {
         this.lobby = undefined;
         this.name = "unnamed";
         this.last = 0;
+        this.ip = socket.conn.remoteAddress;
     }
 
     ping() {

@@ -2,6 +2,8 @@ const Client = require("./client").Client;
 const LobbyManager = require('./lobby');
 const util = require("../utils");
 
+const AntiHijackDuration = 500;
+
 function log(str) {
     console.log("[CLIENT MANAGER] : " + str);
 }
@@ -35,7 +37,7 @@ module.exports = {
                 const existingUser = Client.getUser(uuid);
                 if (existingUser) {
                     const dif = Date.now() - existingUser.last
-                    if (dif < 250) {
+                    if (dif < AntiHijackDuration && existingUser.ip !== user.ip) {
                         let newUuid = util.uuidv4();
                         log(`Client trying to hijak the token ${uuid}, will be using : ` + newUuid);
                         return user.register(newUuid);
