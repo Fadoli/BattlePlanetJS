@@ -1,5 +1,22 @@
-require('tap').mochaGlobals()
-const should = require('should')
+// eslint-disable-next-line
+let describe, it, before, after, beforeEach, afterEach;
+if (typeof Bun !== 'undefined') {
+    describe = require('bun:test').describe;
+    it = require('bun:test').test;
+    before = require('bun:test').before;
+    after = require('bun:test').after;
+    beforeEach = require('bun:test').beforeEach;
+    afterEach = require('bun:test').afterEach;
+} else {
+    describe = require('node:test').describe;
+    it = require('node:test').it;
+    before = require('node:test').before;
+    after = require('node:test').after;
+    beforeEach = require('node:test').beforeEach;
+    afterEach = require('node:test').afterEach;
+}
+
+const assert = require('assert');
 const Lobby = require('./lobby').Lobby;
 
 const clone = (obj) => {
@@ -20,43 +37,43 @@ describe("/server/lobby/lobby", () => {
         randomPlayer = {
             token: 'a player'
         };
-        lobby = new Lobby({owner: creator, name:'my first game'})
+        lobby = new Lobby({ owner: creator, name: 'my first game' });
     });
 
     it("by default the owner is a player", () => {
-        lobby.players[creator.token].should.eql(creator);
-        lobby.playerCount().should.equal(1);
-    })
+        assert.deepStrictEqual(lobby.players[creator.token], creator);
+        assert.strictEqual(lobby.playerCount(), 1);
+    });
 
     describe("addPlayer", () => {
         it("adding an existing user should do nothing", () => {
             const backup = clone(lobby.players);
             lobby.addPlayer(creator);
-            lobby.players.should.eql(backup);
-            lobby.playerCount().should.equal(1);
-        })
+            assert.deepStrictEqual(lobby.players, backup);
+            assert.strictEqual(lobby.playerCount(), 1);
+        });
 
-        it("adding an other user should do add him", () => {
+        it("adding another user should add him", () => {
             lobby.addPlayer(randomPlayer);
 
-            lobby.players[creator.token].should.eql(creator);
-            lobby.players[randomPlayer.token].should.eql(randomPlayer);
-            lobby.playerCount().should.equal(2);
-        })
+            assert.deepStrictEqual(lobby.players[creator.token], creator);
+            assert.deepStrictEqual(lobby.players[randomPlayer.token], randomPlayer);
+            assert.strictEqual(lobby.playerCount(), 2);
+        });
     });
     
     describe("removePlayer", () => {
         it("removing an existing user should remove him", () => {
             lobby.removePlayer(creator);
-            (lobby.players[creator.token] === undefined).should.be.true();
-            lobby.playerCount().should.equal(0);
-        })
+            assert.strictEqual(lobby.players[creator.token], undefined);
+            assert.strictEqual(lobby.playerCount(), 0);
+        });
 
-        it("removing an other (non existing) user should do nothing", () => {
+        it("removing another (non-existing) user should do nothing", () => {
             const backup = clone(lobby.players);
             lobby.removePlayer(randomPlayer);
-            lobby.players.should.eql(backup);
-            lobby.playerCount().should.equal(1);
-        })
+            assert.deepStrictEqual(lobby.players, backup);
+            assert.strictEqual(lobby.playerCount(), 1);
+        });
     });
 });

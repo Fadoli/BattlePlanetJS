@@ -1,5 +1,21 @@
-require('tap').mochaGlobals()
-const should = require('should')
+// eslint-disable-next-line
+let describe, it, before, after, beforeEach, afterEach;
+if (typeof Bun !== 'undefined') {
+    describe = require('bun:test').describe;
+    it = require('bun:test').test;
+    before = require('bun:test').before;
+    after = require('bun:test').after;
+    beforeEach = require('bun:test').beforeEach;
+    afterEach = require('bun:test').afterEach;
+} else {
+    describe = require('node:test').describe;
+    it = require('node:test').it;
+    before = require('node:test').before;
+    after = require('node:test').after;
+    beforeEach = require('node:test').beforeEach;
+    afterEach = require('node:test').afterEach;
+}
+const assert = require('assert');
 const Map = require('./world').Map;
 
 const clone = (obj) => {
@@ -63,371 +79,386 @@ describe("/game/World", () => {
     beforeEach(() => {
         map = new Map(1000);
     });
-    
+
     describe("suns", () => {
         it('is an empty list', () => {
             const suns = map.suns();
-            suns.should.eql([]);
+            assert.deepStrictEqual(suns, []);
         });
     });
     describe("planets", () => {
         it('is an empty list', () => {
             const physics = map.planets();
-            physics.should.eql([]);
+            assert.deepStrictEqual(physics, []);
         });
     });
     describe("bullets", () => {
         it('is an empty list', () => {
             const physics = map.bullets();
-            physics.should.eql([]);
+            assert.deepStrictEqual(physics, []);
         });
     });
-    
+
     describe("tick", () => {
         it('physics should do nothing if there is nothing', () => {
             const physics = clone(map.elements);
             map.tick();
-            map.elements.should.be.eql(physics);
+            assert.deepStrictEqual(map.elements, physics);
         });
-        
+
         describe("Gravity", () => {
             describe("Planet", () => {
                 let middle, simple, simpleMoving;
-                
+
                 beforeEach(() => {
                     middle = createObject(100, 0, 0);
                     simple = createObject(100, 200, 0);
                     simpleMoving = createObject(100, 200, 100, 10, 10, 0, 1);
-                })
-                
+                });
+
                 it('planets should stay the same with no interaction : keep velocity', () => {
-                    map.elements.planets = [ simpleMoving];
+                    map.elements.planets = [simpleMoving];
                     const simpleMovingClone = clone(simpleMoving);
                     const origX = simpleMoving.x;
-                    
+
                     map.tick();
-                    simpleMoving.should.not.be.eql(simpleMovingClone);
-                    simpleMoving.x.should.be.eql(origX + simpleMoving.vx);
-                    
+                    assert.notDeepStrictEqual(simpleMoving, simpleMovingClone);
+                    assert.strictEqual(simpleMoving.x, origX + simpleMoving.vx);
+
                     map.tick();
-                    simpleMoving.should.not.be.eql(simpleMovingClone);
-                    simpleMoving.x.should.be.eql(origX + 2 * simpleMoving.vx);
-                    
+                    assert.notDeepStrictEqual(simpleMoving, simpleMovingClone);
+                    assert.strictEqual(simpleMoving.x, origX + 2 * simpleMoving.vx);
+
                     map.tick();
-                    simpleMoving.should.not.be.eql(simpleMovingClone);
-                    simpleMoving.x.should.be.eql(origX + 3 * simpleMoving.vx);
+                    assert.notDeepStrictEqual(simpleMoving, simpleMovingClone);
+                    assert.strictEqual(simpleMoving.x, origX + 3 * simpleMoving.vx);
                 });
-                
+
                 it('planets should stay the same with no interaction', () => {
                     map.elements.planets = [simple];
                     const physics = clone(map.planets());
                     map.tick();
-                    map.planets().should.be.eql(physics);
+                    assert.deepStrictEqual(map.planets(), physics);
                 });
-                
+
                 it('planets should be attracted by planets', () => {
-                    map.elements.planets = [simple,middle];
+                    map.elements.planets = [simple, middle];
                     const orig = dist(simple, middle);
                     map.tick();
-                    (orig > dist(simple, middle)).should.be.true("Physics should attracts each others");
+                    assert.strictEqual(orig > dist(simple, middle), true, "Physics should attract each other");
                 });
             });
+
             describe("Bullet", () => {
                 let middle, simple, simpleMoving;
-                
+
                 beforeEach(() => {
                     middle = createObject(100, 0, 0);
                     simple = createObject(100, 200, 0);
                     simpleMoving = createObject(100, 200, 100, 10, 10, 0, 1);
-                })
-                
+                });
+
                 it('bullets should stay the same with no interaction : keep velocity', () => {
-                    map.elements.bullets = [ simpleMoving];
+                    map.elements.bullets = [simpleMoving];
                     const simpleMovingClone = clone(simpleMoving);
                     const origX = simpleMoving.x;
-                    
+
                     map.tick();
-                    simpleMoving.should.not.be.eql(simpleMovingClone);
-                    simpleMoving.x.should.be.eql(origX + simpleMoving.vx);
-                    
+                    assert.notDeepStrictEqual(simpleMoving, simpleMovingClone);
+                    assert.strictEqual(simpleMoving.x, origX + simpleMoving.vx);
+
                     map.tick();
-                    simpleMoving.should.not.be.eql(simpleMovingClone);
-                    simpleMoving.x.should.be.eql(origX + 2 * simpleMoving.vx);
-                    
+                    assert.notDeepStrictEqual(simpleMoving, simpleMovingClone);
+                    assert.strictEqual(simpleMoving.x, origX + 2 * simpleMoving.vx);
+
                     map.tick();
-                    simpleMoving.should.not.be.eql(simpleMovingClone);
-                    simpleMoving.x.should.be.eql(origX + 3 * simpleMoving.vx);
+                    assert.notDeepStrictEqual(simpleMoving, simpleMovingClone);
+                    assert.strictEqual(simpleMoving.x, origX + 3 * simpleMoving.vx);
                 });
-                
+
                 it('bullets should stay the same with no interaction', () => {
                     map.elements.bullets = [simple];
                     const physics = clone(map.planets());
                     map.tick();
-                    map.planets().should.be.eql(physics);
+                    assert.deepStrictEqual(map.planets(), physics);
                 });
-                
+
                 it('bullets should not be attracted by bullets', () => {
-                    map.elements.bullets = [simple,middle];
+                    map.elements.bullets = [simple, middle];
                     const orig = dist(simple, middle);
                     map.tick();
-                    (orig > dist(simple, middle)).should.be.false("Physics should attracts each others");
+                    assert.strictEqual(orig > dist(simple, middle), false, "Physics should attract each other");
                 });
             });
-            
+
             describe("Planet - Bullet", () => {
                 let planet, bullet;
-                
+
                 beforeEach(() => {
                     planet = createObject(100, 0, 0);
                     bullet = createObject(100, 200, 0);
-                })
+                });
+
                 it('planets should not be attracted by bullets', () => {
                     map.elements.bullets = [bullet];
                     map.elements.planets = [planet];
-                    
+
                     const cloned = clone(planet);
                     map.tick();
-                    planet.should.eql(cloned);
+                    assert.deepStrictEqual(planet, cloned);
                 });
+
                 it('bullets should be attracted by planets', () => {
                     map.elements.bullets = [bullet];
                     map.elements.planets = [planet];
-                    
+
                     const cloned = clone(bullet);
                     map.tick();
-                    bullet.should.not.eql(cloned);
+                    assert.notDeepStrictEqual(bullet, cloned);
                 });
             });
+
             describe("Sun - Bullet", () => {
                 let sun, bullet;
-                
+
                 beforeEach(() => {
                     sun = createObject(100, 0, 0);
                     bullet = createObject(100, 200, 0);
-                })
+                });
+
                 it('suns should not be attracted by bullets', () => {
                     map.elements.bullets = [bullet];
                     map.elements.suns = [sun];
-                    
+
                     const cloned = clone(sun);
                     map.tick();
-                    sun.should.eql(cloned);
+                    assert.deepStrictEqual(sun, cloned);
                 });
+
                 it('bullets should be attracted by suns', () => {
                     map.elements.bullets = [bullet];
                     map.elements.suns = [sun];
-                    
+
                     const cloned = clone(bullet);
                     map.tick();
-                    bullet.should.not.eql(cloned);
+                    assert.notDeepStrictEqual(bullet, cloned);
                 });
             });
+
+
             describe("Sun - Planet", () => {
                 let sun, planet;
-                
+
                 beforeEach(() => {
                     sun = createObject(100, 0, 0);
                     planet = createObject(100, 200, 0);
-                })
+                });
+
                 it('suns should not be attracted by planets', () => {
                     map.elements.planets = [planet];
                     map.elements.suns = [sun];
-                    
+
                     const cloned = clone(sun);
                     map.tick();
-                    sun.should.eql(cloned);
+                    assert.deepStrictEqual(sun, cloned);
                 });
+
                 it('planets should be attracted by suns', () => {
                     map.elements.planets = [planet];
                     map.elements.suns = [sun];
-                    
+
                     const cloned = clone(planet);
                     map.tick();
-                    planet.should.not.eql(cloned);
+                    assert.notDeepStrictEqual(planet, cloned);
                 });
             });
+
             describe("Interactions", () => {
-                let sun, sunLeft, sunRight, planetMiddle, simplePlanet;
-                
+                let sun, sunLeft, sunRight, planetMiddle, simplePlanet, simpleMovingPlanet;
+
                 beforeEach(() => {
                     sun = createObject(1000, 0, 0, 100);
                     sunLeft = createObject(1000, -100, 0, 100);
-                    sunRight = createObject(1000, +100, 0, 100);
+                    sunRight = createObject(1000, 100, 0, 100);
                     planetMiddle = createObject(100, 0, 0);
                     simplePlanet = createObject(100, 200, 0);
                     simpleMovingPlanet = createObject(100, 200, 100, 10, 10, 0, 1);
-                })
-                
+                });
+
                 it('planets should move when there is a sun', () => {
                     map.elements.suns = [sun];
                     map.elements.planets = [simplePlanet];
                     const physics = clone(map.planets());
                     map.tick();
-                    map.planets().should.not.be.eql(physics);
+                    assert.notDeepStrictEqual(map.planets(), physics);
                 });
-                
+
                 it('planets should be attracted by suns', () => {
                     map.elements.suns = [sun];
                     map.elements.planets = [simplePlanet];
                     const orig = dist(sun, simplePlanet);
                     map.tick();
-                    (orig > dist(sun, simplePlanet)).should.be.true("Physics should attracts each others");
+                    assert.strictEqual(orig > dist(sun, simplePlanet), true, "Physics should attract each other");
                 });
-                
-                it('planet should be equaly attracted by suns : 2 at oposite direction = no movement', () => {
+
+                it('planet should be equally attracted by suns: 2 at opposite direction = no movement', () => {
                     map.elements.suns = [sunLeft, sunRight];
                     map.elements.planets = [planetMiddle];
-                    
+
                     const physics = clone(map.planets());
                     map.tick();
-                    map.planets().should.be.eql(physics);
+                    assert.deepStrictEqual(map.planets(), physics);
                 });
-                
+
                 it('suns should not move', () => {
                     map.elements.suns = [sun];
                     map.elements.planets = [simplePlanet];
                     const suns = clone(map.suns());
                     map.tick();
-                    map.suns().should.be.eql(suns);
+                    assert.deepStrictEqual(map.suns(), suns);
                 });
             });
         });
-        
+
         describe("Collisions", () => {
             describe("Planet", () => {
                 let physRightToLeft, physLeftToRight;
-                
+
                 beforeEach(() => {
                     physRightToLeft = createObject(100, 30, 0, 10, -10, 0, 1);
                     physRightToLeft.isAffectedByGravity = false;
                     physLeftToRight = createObject(100, -30, 0, 10, 10, 0, 1);
                     physLeftToRight.isAffectedByGravity = false;
-                })
-                
+                });
+
                 it('should collide', () => {
                     map.elements.planets = [physRightToLeft, physLeftToRight];
-                    
+
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
                         map.tick();
                     }
-                    
-                    (physRightToLeft.x > 0).should.be.true("Object failed to collide");
+
+                    assert.strictEqual(physRightToLeft.x > 0, true, "Object failed to collide");
                 });
-                
+
                 it('should preserve energy when colliding', () => {
                     map.elements.planets = [physRightToLeft, physLeftToRight];
                     let energy = 0;
                     map.planets().forEach((elem) => {
-                        energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                        energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy);
                     });
                     energy = Math.round(energy);
-                    
+
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
                         map.tick();
                     }
-                    
+
                     let energyNew = 0;
                     map.planets().forEach((elem) => {
-                        energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                        energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy);
                     });
                     energyNew = Math.round(energyNew);
-                    energyNew.should.be.eql(energy, "Energy is conserved in an fully elastic collision !");
+                    assert.strictEqual(energyNew, energy, "Energy is conserved in a fully elastic collision!");
                 });
-                
+
                 it('should preserve energy when colliding and mass differ', () => {
                     map.elements.planets = [physRightToLeft, physLeftToRight];
                     physRightToLeft.mass /= 2;
                     let energy = 0;
                     map.planets().forEach((elem) => {
-                        energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                        energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy);
                     });
                     energy = Math.round(energy);
-                    
+
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
                         map.tick();
                     }
-                    
+
                     let energyNew = 0;
                     map.planets().forEach((elem) => {
-                        energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy)
+                        energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy);
                     });
                     energyNew = Math.round(energyNew);
-                    energyNew.should.be.eql(energy, "Energy is conserved in an fully elastic collision !");
+                    assert.strictEqual(energyNew, energy, "Energy is conserved in a fully elastic collision!");
                 });
-                
+
                 it('should preserve "energy" when colliding with multiplier', () => {
                     map.elements.planets = [physRightToLeft, physLeftToRight];
                     physRightToLeft.multiplier = 2;
                     let energy = 0;
                     map.planets().forEach((elem) => {
-                        energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy) / Math.sqrt(elem.multiplier)
+                        energy += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy) / Math.sqrt(elem.multiplier);
                     });
                     energy = Math.round(energy);
+
                     // While it moves to the left, and hasn't crossed 0
                     while (physRightToLeft.vx < 0 && physRightToLeft.x > 0) {
                         map.tick();
                     }
-                    
+
                     let energyNew = 0;
                     map.planets().forEach((elem) => {
-                        energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy) / Math.sqrt(elem.multiplier)
+                        energyNew += elem.mass * (elem.vx * elem.vx + elem.vy * elem.vy) / Math.sqrt(elem.multiplier);
                     });
                     energyNew = Math.round(energyNew);
-                    energyNew.should.be.eql(energy);
+                    assert.strictEqual(energyNew, energy);
                 });
             });
+
             describe("Bullet", () => {
                 let physRightToLeft, physLeftToRight;
-                
+
                 beforeEach(() => {
                     physRightToLeft = createObject(100, 30, 0, 10, -10, 0, 1);
                     physRightToLeft.isAffectedByGravity = false;
                     physLeftToRight = createObject(100, -30, 0, 10, 10, 0, 1);
                     physLeftToRight.isAffectedByGravity = false;
-                })
-                
-                it('should collide : bullets get removed', () => {
+                });
+
+                it('should collide: bullets get removed', () => {
                     map.elements.bullets = [physRightToLeft, physLeftToRight];
-                    
+
                     // While it moves to the left, and hasn't crossed 0
                     while (map.elements.bullets.length === 2 && physRightToLeft.x > 0) {
                         map.tick();
                     }
-                    
-                    (map.elements.bullets.length).should.be.equal(0,"Object failed to collide");
+
+                    assert.strictEqual(map.elements.bullets.length, 0, "Object failed to collide");
                 });
             });
+
             describe("Planet - Bullet", () => {
                 let physRightToLeft, physLeftToRight;
-                
+
                 beforeEach(() => {
                     physRightToLeft = createObject(100, 30, 0, 10, -10, 0, 1);
                     physRightToLeft.isAffectedByGravity = false;
                     physLeftToRight = createObject(100, -30, 0, 10, 10, 0, 1);
                     physLeftToRight.isAffectedByGravity = false;
-                })
-                
-                it('should collide : Check planet volicity', () => {
+                });
+
+                it('should collide: Check planet velocity', () => {
                     map.elements.planets = [physRightToLeft];
                     map.elements.bullets = [physLeftToRight];
-                    
+
                     const vx = physRightToLeft.vx;
                     // While it moves to the left, and hasn't crossed 0
                     while (map.elements.bullets.length === 1 && physRightToLeft.x > 0) {
                         map.tick();
                     }
                     const expectedVx = vx + physLeftToRight.vx * physLeftToRight.mass * Math.sqrt(physRightToLeft.multiplier) / physRightToLeft.mass;
-                    physRightToLeft.vx.should.be.eql(expectedVx);
-                    
-                    (map.elements.bullets.length).should.be.equal(0,"Object failed to collide");
+                    assert.strictEqual(physRightToLeft.vx, expectedVx);
+
+                    assert.strictEqual(map.elements.bullets.length, 0, "Object failed to collide");
                 });
-                it('should collide : Check planet volicity with multiplier', () => {
+
+                it('should collide: Check planet velocity with multiplier', () => {
                     map.elements.planets = [physRightToLeft];
                     map.elements.bullets = [physLeftToRight];
-                    
+
                     physRightToLeft.multiplier = 2;
                     const vx = physRightToLeft.vx;
                     // While it moves to the left, and hasn't crossed 0
@@ -435,23 +466,23 @@ describe("/game/World", () => {
                         map.tick();
                     }
                     const expectedVx = vx + physLeftToRight.vx * physLeftToRight.mass * Math.sqrt(physRightToLeft.multiplier) / physRightToLeft.mass;
-                    physRightToLeft.vx.should.be.eql(expectedVx);
-                    
-                    (map.elements.bullets.length).should.be.equal(0,"Object failed to collide");
+                    assert.strictEqual(physRightToLeft.vx, expectedVx);
+
+                    assert.strictEqual(map.elements.bullets.length, 0, "Object failed to collide");
                 });
-                it('should collide : bullets get removed', () => {
+
+                it('should collide: bullets get removed', () => {
                     map.elements.planets = [physRightToLeft];
                     map.elements.bullets = [physLeftToRight];
-                    
+
                     // While it moves to the left, and hasn't crossed 0
                     while (map.elements.bullets.length === 1 && physRightToLeft.x > 0) {
                         map.tick();
                     }
-                    
-                    (map.elements.bullets.length).should.be.equal(0,"Object failed to collide");
+
+                    assert.strictEqual(map.elements.bullets.length, 0, "Object failed to collide");
                 });
             });
         });
     });
 });
-

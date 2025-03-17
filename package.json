@@ -4,8 +4,7 @@
   "description": "A set of client+server for space battle",
   "main": "./.bin/index.js",
   "scripts": {
-    "test": "tap ./src/**/*.spec.js --reporter=spec",
-    "posttest": "tap --coverage-report=text-lcov > ./lcov.info",
+    "test": "bun test --coverage",
     "start-prod": "node ./.bin/index.js",
     "start": "node ./src/index.js",
     "build": "rollup --config"
@@ -27,18 +26,16 @@
   },
   "homepage": "https://github.com/Fadoli/BattlePlanetJS#readme",
   "dependencies": {
-    "socket.io": "^3.1.0"
+    "socket.io": "^3.1.2"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^16.0.0",
-    "@rollup/plugin-json": "^4.0.2",
-    "@rollup/plugin-node-resolve": "^10.0.0",
-    "express": "^4.17.1",
-    "pixi.js": "^5.3.7",
-    "rollup": "^2.36.2",
-    "rollup-plugin-copy": "^3.3.0",
-    "rollup-plugin-progress": "^1.1.1",
-    "should": "^13.2.3",
-    "tap": "^14.11.0"
+    "@rollup/plugin-commonjs": "^28.0.0",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "express": "^4.21.2",
+    "pixi.js": "^8.8.1",
+    "rollup": "^4.36.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "rollup-plugin-progress": "^1.1.2"
   }
 }

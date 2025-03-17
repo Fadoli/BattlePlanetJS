@@ -1,5 +1,22 @@
-require('tap').mochaGlobals()
-const should = require('should');
+// eslint-disable-next-line
+let describe, it, before, after, beforeEach, afterEach;
+if (typeof Bun !== 'undefined') {
+    describe = require('bun:test').describe;
+    it = require('bun:test').test;
+    before = require('bun:test').before;
+    after = require('bun:test').after;
+    beforeEach = require('bun:test').beforeEach;
+    afterEach = require('bun:test').afterEach;
+} else {
+    describe = require('node:test').describe;
+    it = require('node:test').it;
+    before = require('node:test').before;
+    after = require('node:test').after;
+    beforeEach = require('node:test').beforeEach;
+    afterEach = require('node:test').afterEach;
+}
+
+const assert = require('assert');
 const LobbyManager = require('./index');
 
 const clone = (obj) => {
@@ -10,9 +27,7 @@ describe("/server/lobby/index", () => {
 
     let creator, randomPlayer;
     let publicLobby, privateLobby;
-    /**
-     * @type {Lobby}
-     */
+
     beforeEach(() => {
         creator = {
             token: 'owner'
@@ -28,19 +43,17 @@ describe("/server/lobby/index", () => {
         };
         privateLobby = {
             ...publicLobby,
-            ...{
-                isPublic: false,
-            }
+            isPublic: false,
         };
     });
 
     it("Manage list of lobbys", () => {
-        LobbyManager.getPublic().should.eql([]);
-        const lob = LobbyManager.create(publicLobby)
-        LobbyManager.getLobby(lob.uuid).should.eql(lob);
-        LobbyManager.getPublic().should.eql([lob]);
-        const lob2 = LobbyManager.create(privateLobby)
-        LobbyManager.getPublic().should.eql([lob]);
-        LobbyManager.getLobby(lob2.uuid).should.eql(lob2);
-    })
+        assert.deepStrictEqual(LobbyManager.getPublic(), []);
+        const lob = LobbyManager.create(publicLobby);
+        assert.deepStrictEqual(LobbyManager.getLobby(lob.uuid), lob);
+        assert.deepStrictEqual(LobbyManager.getPublic(), [lob]);
+        const lob2 = LobbyManager.create(privateLobby);
+        assert.deepStrictEqual(LobbyManager.getPublic(), [lob]);
+        assert.deepStrictEqual(LobbyManager.getLobby(lob2.uuid), lob2);
+    });
 });
