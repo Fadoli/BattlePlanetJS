@@ -58,8 +58,8 @@ class Client {
         if (!this.token) {
             return;
         }
-        this.token = undefined;
         unregister(this);
+        this.token = undefined;
     }
 
     /**
