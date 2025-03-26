@@ -5,9 +5,9 @@
   "main": "./.bin/index.js",
   "scripts": {
     "test": "bun test --coverage",
-    "start-prod": "node ./.bin/index.js",
-    "start": "node ./src/index.js",
-    "build": "rollup --config"
+    "start-prod": "bun ./.bin/index.js",
+    "start": "bun ./src/index.js",
+    "build": "rollup --config --bundleConfigAsCjs"
   },
   "repository": {
     "type": "git",
