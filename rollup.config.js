@@ -44,7 +44,7 @@ export default [
         ],
         external: [
             // 'express',
-            'socket.io'
+            'ws'
         ],
         plugins: [
             progress(),

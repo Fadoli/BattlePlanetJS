@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const { WebSocketServer } = require("ws");
 
 const staticPages = require('./static');
 const clientManager = require('./clientManager');
@@ -7,7 +8,7 @@ const gameRegistry = require('./gameRegistry');
 
 const app = express();
 const server = require('http').Server(app);
-const io = require('socket.io')(server);
+const wss = new WebSocketServer({ server });
 
 module.exports = {
     start: () => {
@@ -19,7 +20,7 @@ module.exports = {
         staticPages.init(app);
 
         // Handle loby and game communication
-        clientManager.init(io);
+        clientManager.init(wss);
         gameRegistry.empty();
         gameRegistry.init(path.join(__dirname,'../games'))
     }

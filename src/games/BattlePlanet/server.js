@@ -16,6 +16,10 @@ const AI_SAFE_ORBIT = 920;
 const AI_FAR_RADIUS = 1460;
 const ROUND_RESET_MS = 2500;
 const PLAYER_COLORS = [0x48d1ff, 0x8ef58f, 0xfab1ff, 0xffd166];
+const BASE_MODIFIER = 1;
+const MAX_MODIFIER = 6;
+const ROCK_HIT_MODIFIER_GAIN = 0.6;
+const SUN_HIT_MODIFIER_GAIN = 1.2;
 
 function normalizeAngle(angle) {
     let value = angle;
@@ -43,7 +47,7 @@ function applyGravity(body, sun, dt) {
     const dy = sun.y - body.y;
     const distanceSquared = Math.max(dx * dx + dy * dy, 2500);
     const distance = Math.sqrt(distanceSquared);
-    const acceleration = sun.mass / distanceSquared;
+    const acceleration = (sun.mass / distanceSquared) * (body.modifier || BASE_MODIFIER);
 
     body.vx += ((dx / distance) * acceleration) * dt * 60;
     body.vy += ((dy / distance) * acceleration) * dt * 60;
@@ -78,11 +82,13 @@ function resolvePlanetCollision(a, b) {
         return;
     }
 
-    const impulse = (-1.1 * relativeVelocity) / ((1 / a.mass) + (1 / b.mass));
-    a.vx -= (impulse * nx) / a.mass;
-    a.vy -= (impulse * ny) / a.mass;
-    b.vx += (impulse * nx) / b.mass;
-    b.vy += (impulse * ny) / b.mass;
+    const effectiveMassA = a.mass / (a.modifier || BASE_MODIFIER);
+    const effectiveMassB = b.mass / (b.modifier || BASE_MODIFIER);
+    const impulse = (-1.1 * relativeVelocity) / ((1 / effectiveMassA) + (1 / effectiveMassB));
+    a.vx -= (impulse * nx) / effectiveMassA;
+    a.vy -= (impulse * ny) / effectiveMassA;
+    b.vx += (impulse * nx) / effectiveMassB;
+    b.vy += (impulse * ny) / effectiveMassB;
 }
 
 function bounceRock(body, rock) {
@@ -103,11 +109,16 @@ function bounceRock(body, rock) {
         return;
     }
 
-    const impulse = (-1.15 * relativeVelocity) / ((1 / body.mass) + (1 / rock.mass));
-    body.vx -= (impulse * nx) / body.mass;
-    body.vy -= (impulse * ny) / body.mass;
+    const effectiveMass = body.mass / (body.modifier || BASE_MODIFIER);
+    const impulse = (-1.15 * relativeVelocity) / ((1 / effectiveMass) + (1 / rock.mass));
+    body.vx -= (impulse * nx) / effectiveMass;
+    body.vy -= (impulse * ny) / effectiveMass;
     rock.vx += (impulse * nx) / rock.mass;
     rock.vy += (impulse * ny) / rock.mass;
+}
+
+function increaseModifier(body, amount) {
+    body.modifier = Math.min(MAX_MODIFIER, (body.modifier || BASE_MODIFIER) + amount);
 }
 
 class GameManager {
@@ -157,6 +168,7 @@ class GameManager {
             mass: radius * 12,
             angle: Math.atan2(vy, vx),
             health,
+            modifier: BASE_MODIFIER,
             color,
             shootCooldown: 0,
             isAffectedByGravity: true,
@@ -180,6 +192,7 @@ class GameManager {
             mass: 264,
             angle,
             health: 5,
+            modifier: BASE_MODIFIER,
             color: PLAYER_COLORS[index % PLAYER_COLORS.length],
             shootCooldown: 0,
             isAffectedByGravity: true,
@@ -413,11 +426,8 @@ class GameManager {
                 }
 
                 bounceRock(planet, rock);
-                planet.health -= 1;
+                increaseModifier(planet, ROCK_HIT_MODIFIER_GAIN);
                 rock.ttl = Math.min(rock.ttl, 0.25);
-                if (planet.health <= 0) {
-                    this.destroyPlanet(planet);
-                }
             }
         }
     }
@@ -459,11 +469,8 @@ class GameManager {
 
         planet.vx = normalX * bounceSpeed + tangentX * tangentSpeed * 0.92;
         planet.vy = normalY * bounceSpeed + tangentY * tangentSpeed * 0.92;
-        planet.health -= 1;
+        increaseModifier(planet, SUN_HIT_MODIFIER_GAIN);
 
-        if (planet.health <= 0) {
-            this.destroyPlanet(planet);
-        }
     }
 
     handleArenaBounds(planets) {
@@ -479,7 +486,6 @@ class GameManager {
 
     destroyPlanet(planet) {
         planet.alive = false;
-        planet.health = 0;
         if (planet.team === "enemy") {
             this.state.enemies = this.state.enemies.filter((enemy) => enemy.id !== planet.id);
         }
@@ -530,6 +536,7 @@ class GameManager {
                 radius: body.radius,
                 angle: body.angle,
                 health: body.health,
+                modifier: body.modifier,
                 color: body.color,
                 alive: body.alive,
             }));
@@ -545,6 +552,7 @@ class GameManager {
             radius: enemy.radius,
             angle: enemy.angle,
             health: enemy.health,
+            modifier: enemy.modifier,
             color: enemy.color,
             alive: enemy.alive,
         }));

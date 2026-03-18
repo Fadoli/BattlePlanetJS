@@ -1,6 +1,7 @@
 const Client = require("./client").Client;
 const LobbyManager = require('./lobby');
 const util = require("../utils");
+const { createServerSocketAdapter } = require("./wsAdapter");
 
 const AntiHijackDuration = 500;
 
@@ -28,8 +29,9 @@ function userLeaveLobby (user) {
 
 module.exports = {
 
-    init(io) {
-        io.on('connection', function (socket) {
+    init(wss) {
+        wss.on('connection', function (rawSocket, request) {
+            const socket = createServerSocketAdapter(rawSocket, request);
             const user = new Client(socket);
             socket.on('setToken', function (msg) {
                 const uuid = msg.uuid;

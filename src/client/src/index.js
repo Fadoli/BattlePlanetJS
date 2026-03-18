@@ -1,4 +1,62 @@
-const socket = io();
+function createSocketClient() {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}`);
+    const listeners = {};
+    const queue = [];
+
+    socket.addEventListener("open", () => {
+        while (queue.length > 0) {
+            socket.send(queue.shift());
+        }
+    });
+
+    socket.addEventListener("message", (event) => {
+        let message;
+        try {
+            message = JSON.parse(event.data);
+        } catch (error) {
+            return;
+        }
+
+        if (!message || typeof message.event !== "string") {
+            return;
+        }
+
+        const handlers = listeners[message.event] || [];
+        handlers.forEach((handler) => handler(message.payload));
+    });
+
+    socket.addEventListener("close", () => {
+        const handlers = listeners.disconnect || [];
+        handlers.forEach((handler) => handler());
+    });
+
+    return {
+        on(event, handler) {
+            if (!listeners[event]) {
+                listeners[event] = [];
+            }
+            listeners[event].push(handler);
+        },
+        emit(event, payload) {
+            const serialized = JSON.stringify({
+                event,
+                payload,
+            });
+
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(serialized);
+                return;
+            }
+
+            if (socket.readyState === WebSocket.CONNECTING) {
+                queue.push(serialized);
+            }
+        },
+    };
+}
+
+const socket = createSocketClient();
 let token = localStorage.getItem("token");
 let username = localStorage.getItem("username");
 let gameId;
@@ -26,14 +84,14 @@ function updateUserVisibility() {
 function updateGameVisibility() {
     if (!gameId) {
         $("#lobby").show();
-        $("#gameRender").hide();
+        $("#gameScreen").hide();
         BattlePlanetGame.stop();
         BattlePlanetGame.clearState();
         return;
     }
 
     $("#lobby").hide();
-    $("#gameRender").show();
+    $("#gameScreen").show();
     BattlePlanetGame.start();
     BattlePlanetGame.resizeToContainer();
 }

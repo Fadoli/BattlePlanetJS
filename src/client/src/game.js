@@ -30,17 +30,12 @@
     const starField = new PIXI.Graphics();
     const worldLayer = new PIXI.Container();
     const bodyGraphics = new PIXI.Graphics();
-    const hudText = new PIXI.Text("", {
-        fill: 0xe8f0ff,
-        fontFamily: "monospace",
-        fontSize: 18,
-        lineHeight: 26,
-    });
+    const statusElement = document.getElementById("gameStatus");
+    const controlsElement = document.getElementById("gameControls");
 
     app.stage.addChild(starField);
     worldLayer.addChild(bodyGraphics);
     app.stage.addChild(worldLayer);
-    app.stage.addChild(hudText);
 
     let resizeTimestamp = 0;
     let zoom = DEFAULT_ZOOM;
@@ -189,6 +184,7 @@
             radius: typeof previous.radius === "number" && typeof next.radius === "number" ? lerp(previous.radius, next.radius, alpha) : base.radius,
             angle: typeof previous.angle === "number" && typeof next.angle === "number" ? lerpAngle(previous.angle, next.angle, alpha) : base.angle,
             health: typeof previous.health === "number" && typeof next.health === "number" ? lerp(previous.health, next.health, alpha) : base.health,
+            modifier: typeof previous.modifier === "number" && typeof next.modifier === "number" ? lerp(previous.modifier, next.modifier, alpha) : base.modifier,
         };
     }
 
@@ -307,11 +303,10 @@
         const playerSpeed = player ? getSpeed(player).toFixed(2) : "0.00";
         const aliveEnemies = networkState.enemies.filter((enemy) => enemy.alive !== false).length;
         const teammates = networkState.players.length;
+        const instabilityPercent = player ? Math.round(((player.modifier || 1) - 1) * 100) : 0;
 
         const lines = [
-            "BattlePlanet",
-            "Shared lobby match: move the cursor to aim, click to eject a rock, wheel to zoom.",
-            `Hull: ${player ? Math.max(0, player.health) : 0}    Speed: ${playerSpeed}    Teammates: ${teammates}`,
+            `Instability: +${instabilityPercent}%    Speed: ${playerSpeed}    Teammates: ${teammates}`,
             `Orbit radius: ${playerDistance} / ${networkState.worldRadius}    Enemies: ${aliveEnemies}    Zoom: ${zoom.toFixed(2)}x`,
         ];
 
@@ -322,12 +317,11 @@
         } else if (!player) {
             lines.push("Waiting for your player state from the server...");
         } else {
-            lines.push("Everyone in the lobby is looking at the same battle state now.");
+            lines.push("Hits do not kill directly: they increase how strongly gravity and impacts move a planet.");
         }
 
-        hudText.text = lines.join("\n");
-        hudText.x = 18;
-        hudText.y = 16;
+        statusElement.textContent = lines.join("\n");
+        controlsElement.textContent = "Aim with the cursor, click to eject a rock, wheel to zoom. Hits raise instability up to +500%, making gravity and collisions much harsher.";
     }
 
     function drawArenaLimit() {

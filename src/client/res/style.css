@@ -71,6 +71,7 @@ body {
 }
 
 #lobby,
+#gameScreen,
 #gameRender {
     height: 100%;
     width: 100%;
@@ -83,17 +84,49 @@ body {
     padding: 20px;
 }
 
+#gameScreen {
+    display: flex;
+    flex-direction: column;
+}
+
 #gameRender {
     align-items: center;
     display: flex;
+    flex: 1 1 auto;
     justify-content: center;
-    padding: 8px;
+    min-height: 0;
+    padding: 8px 14px;
 }
 
 #gameRender canvas {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
     max-width: 100%;
+}
+
+.gameHudBar {
+    background: rgba(8, 18, 30, 0.72);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 14px 18px;
+}
+
+#gameControls.gameHudBar {
+    border-bottom: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-soft);
+    font-size: 13px;
+}
+
+#gameHeader h1 {
+    font-size: 22px;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+
+#gameStatus {
+    color: var(--text);
+    min-height: 42px;
+    white-space: pre-line;
 }
 
 .panelHeader {
