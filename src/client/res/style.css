@@ -1,14 +1,19 @@
 :root {
-    --bg: #07111d;
-    --bg-panel: #102033;
-    --bg-panel-soft: #16283e;
-    --bg-card: #1f3149;
-    --border: #37516f;
-    --text: #edf6ff;
-    --text-soft: #9fb7cf;
-    --accent: #48d1ff;
-    --accent-strong: #ffb347;
+    --bg: #06101b;
+    --bg-panel: rgba(9, 22, 35, 0.94);
+    --bg-panel-soft: rgba(13, 28, 43, 0.96);
+    --bg-card: rgba(18, 36, 55, 0.95);
+    --bg-card-strong: rgba(24, 46, 67, 0.98);
+    --border: rgba(119, 198, 255, 0.18);
+    --border-strong: rgba(119, 198, 255, 0.32);
+    --text: #edf7ff;
+    --text-soft: #94afc8;
+    --accent: #67daf9;
+    --accent-strong: #f2e6c9;
+    --accent-muted: #1d4960;
+    --surface-pop: #11273b;
     --danger: #ff6b6b;
+    --shadow: 0 26px 60px rgba(0, 0, 0, 0.33);
 }
 
 * {
@@ -23,11 +28,12 @@ body {
 }
 
 body {
-    background:
-        radial-gradient(circle at top, rgba(72, 209, 255, 0.12), transparent 35%),
-        linear-gradient(180deg, #040b13 0%, var(--bg) 100%);
+    background-color: var(--bg);
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='rgba(103,218,249,0.06)' stroke-width='1'%3E%3Cpath d='M0 40H240'/%3E%3Cpath d='M0 120H240'/%3E%3Cpath d='M0 200H240'/%3E%3Cpath d='M40 0V240'/%3E%3Cpath d='M120 0V240'/%3E%3Cpath d='M200 0V240'/%3E%3C/g%3E%3C/svg%3E");
     color: var(--text);
-    font: 14px/1.4 "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font: 14px/1.4 "Trebuchet MS", "Segoe UI", sans-serif;
+    overflow: hidden;
 }
 
 #login {
@@ -39,21 +45,37 @@ body {
 
 #content {
     display: flex;
-    gap: 12px;
+    gap: 16px;
     margin: 0 auto;
-    max-width: 1600px;
+    max-width: 1680px;
+    min-height: 100vh;
     min-width: 320px;
-    padding: 12px;
+    padding: 18px;
+    position: relative;
 }
 
 #main,
 #side {
-    background: rgba(16, 32, 51, 0.88);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
-    min-height: calc(100vh - 24px);
+    backdrop-filter: blur(14px);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 28px;
+    box-shadow: var(--shadow);
+    min-height: calc(100vh - 36px);
     overflow: hidden;
+    position: relative;
+}
+
+#main::before,
+#side::before {
+    background: rgba(103, 218, 249, 0.05);
+    content: "";
+    height: 100%;
+    left: 18px;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    width: 1px;
 }
 
 #main {
@@ -66,7 +88,7 @@ body {
 
 #side {
     display: flex;
-    flex: 0 0 320px;
+    flex: 0 0 340px;
     flex-direction: column;
 }
 
@@ -80,8 +102,9 @@ body {
 #lobby {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 20px;
+    gap: 18px;
+    overflow-y: auto;
+    padding: 24px;
 }
 
 #gameScreen {
@@ -95,12 +118,15 @@ body {
     flex: 1 1 auto;
     justify-content: center;
     min-height: 0;
+    overflow: hidden;
     padding: 8px 14px;
+    position: relative;
 }
 
 #gameRender canvas {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
+    max-height: 100%;
     max-width: 100%;
 }
 
@@ -123,64 +149,375 @@ body {
     margin-bottom: 6px;
 }
 
-#gameStatus {
+.gameTitleRow {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+#fullscreenToggle {
+    min-width: 128px;
+    padding: 10px 14px;
+}
+
+.leaderboardOverlay {
+    background: rgba(7, 17, 29, 0.84);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
     color: var(--text);
-    min-height: 42px;
+    left: 18px;
+    min-width: 260px;
+    padding: 14px 16px;
+    pointer-events: none;
+    position: absolute;
+    top: 18px;
     white-space: pre-line;
+}
+
+.leaderboardOverlay[hidden] {
+    display: none;
 }
 
 .panelHeader {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 18px 20px 14px;
+    padding: 22px 24px 16px;
 }
 
 .panelHeader h1,
 .panelHeader h2 {
-    font-size: 22px;
-    letter-spacing: 0.04em;
+    font-family: "Book Antiqua", Georgia, serif;
+    font-size: 34px;
+    letter-spacing: 0.02em;
 }
 
 .panelHeader p {
     color: var(--text-soft);
-    margin-top: 6px;
+    margin-top: 10px;
+    max-width: 720px;
+}
+
+.eyebrow {
+    color: var(--accent);
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.lobbyHero {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 26px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    overflow: hidden;
+    position: relative;
+}
+
+.lobbyHero::after {
+    background: rgba(255, 255, 255, 0.05);
+    content: "";
+    height: 1px;
+    left: 24px;
+    position: absolute;
+    right: 24px;
+    top: 138px;
+}
+
+.lobbyHero::before {
+    border: 1px solid rgba(103, 218, 249, 0.16);
+    border-radius: 16px;
+    content: "";
+    height: 68px;
+    pointer-events: none;
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    width: 68px;
+}
+
+.lobbyHeroHeader {
+    border-bottom: none;
+    padding-bottom: 26px;
+}
+
+.lobbyComposer {
+    align-items: end;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(260px, 1.6fr) minmax(300px, 1fr) auto;
+    padding: 0 24px 24px;
+}
+
+.lobbySettingsGrid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fieldGroup label,
+.toggleText {
+    color: var(--text-soft);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.fieldGroupPrimary {
+    min-width: 0;
+}
+
+select,
+input,
+button {
+    border: none;
+    border-radius: 14px;
+    font: inherit;
+    padding: 13px 15px;
+}
+
+input,
+select {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    color: var(--text);
+    flex: 1 1 auto;
+}
+
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='10' viewBox='0 0 14 10'%3E%3Cpath d='M2 2.5 7 7.5 12 2.5' fill='none' stroke='%2394afc8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: calc(100% - 14px) 50%;
+    background-repeat: no-repeat;
+    background-size: 12px 9px;
+    padding-right: 34px;
+}
+
+.toggleField {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 18px;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    min-height: 51px;
+    padding: 0 14px;
+}
+
+.toggleText {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.toggleField input {
+    display: none;
+}
+
+.toggleKnob {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: inline-block;
+    flex: 0 0 46px;
+    height: 26px;
+    position: relative;
+    transition: background 140ms ease;
+    width: 46px;
+}
+
+.toggleKnob::after {
+    background: var(--accent-strong);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(7, 17, 29, 0.18);
+    content: "";
+    height: 18px;
+    left: 4px;
+    position: absolute;
+    top: 4px;
+    transition: transform 140ms ease;
+    width: 18px;
+}
+
+.toggleField input:checked + .toggleKnob {
+    background: var(--accent-muted);
+    border-color: rgba(103, 218, 249, 0.34);
+}
+
+.toggleField input:checked + .toggleKnob::after {
+    transform: translateX(20px);
+}
+
+.createLobbyButton {
+    align-self: stretch;
+    background: var(--accent-strong);
+    border: 1px solid rgba(242, 230, 201, 0.52);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+        6px 6px 0 rgba(7, 17, 29, 0.5);
+    color: #0a1824;
+    min-width: 160px;
+    padding-inline: 22px;
+    position: relative;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.lobbyListSection {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+}
+
+.sectionHeading {
+    align-items: end;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+}
+
+.sectionHeading h2 {
+    font-family: "Book Antiqua", Georgia, serif;
+    font-size: 28px;
+}
+
+.sectionHeading p {
+    color: var(--text-soft);
+    max-width: 340px;
 }
 
 #games {
     display: grid;
-    gap: 10px;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+#games:empty::before {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    color: var(--text-soft);
+    content: "No public lobbies yet. Launch one above and set the tone.";
+    display: block;
+    padding: 22px;
 }
 
 .gameListing {
-    background: linear-gradient(135deg, rgba(31, 49, 73, 0.95), rgba(22, 40, 62, 0.95));
-    border: 1px solid rgba(72, 209, 255, 0.2);
-    border-radius: 14px;
+    background: var(--bg-card-strong);
+    border: 1px solid rgba(103, 218, 249, 0.14);
+    border-radius: 20px;
     cursor: pointer;
-    padding: 14px 16px;
-    transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    min-height: 182px;
+    padding: 18px;
+    position: relative;
+    transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .gameListing:hover {
-    background: linear-gradient(135deg, rgba(43, 69, 102, 0.98), rgba(26, 46, 71, 0.98));
-    border-color: rgba(72, 209, 255, 0.42);
-    transform: translateY(-1px);
+    border-color: rgba(103, 218, 249, 0.32);
+    box-shadow:
+        inset 0 0 0 1px rgba(103, 218, 249, 0.06),
+        0 16px 30px rgba(0, 0, 0, 0.22);
+    transform: translateY(-2px);
+}
+
+.gameListing::before {
+    background: var(--accent);
+    border-radius: 999px;
+    content: "";
+    height: 8px;
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    width: 8px;
+}
+
+.gameListingHeader {
+    align-items: start;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.gameListingTitle {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 24px;
+    line-height: 1.1;
+}
+
+.gameListingMeta {
+    color: var(--text-soft);
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.lobbyPopulation {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 10px;
+    white-space: nowrap;
+}
+
+.lobbyTagRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.lobbyTag {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+    color: #d7e6f6;
+    font-size: 12px;
+    padding: 7px 11px;
+}
+
+.lobbyJoinHint {
+    bottom: 18px;
+    color: var(--accent-strong);
+    font-size: 12px;
+    font-weight: 700;
+    left: 18px;
+    letter-spacing: 0.08em;
+    position: absolute;
+    text-transform: uppercase;
 }
 
 #messages {
-    background: rgba(7, 17, 29, 0.55);
+    background: rgba(5, 14, 24, 0.58);
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     list-style: none;
     overflow-y: auto;
-    padding: 14px;
+    padding: 18px;
 }
 
 #messages li {
     background: rgba(255, 255, 255, 0.05);
-    border-left: 3px solid rgba(72, 209, 255, 0.35);
-    border-radius: 10px;
-    padding: 8px 10px;
+    border-left: 3px solid rgba(103, 218, 249, 0.35);
+    border-radius: 14px;
+    padding: 10px 12px;
 }
 
 form {
@@ -193,22 +530,8 @@ form {
 form#user {
     background: rgba(16, 32, 51, 0.92);
     border: 1px solid var(--border);
-    border-radius: 18px;
+    border-radius: 22px;
     max-width: 560px;
-}
-
-input,
-button {
-    border: none;
-    border-radius: 12px;
-    font: inherit;
-    padding: 12px 14px;
-}
-
-input {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text);
-    flex: 1 1 auto;
 }
 
 input::placeholder {
@@ -216,15 +539,20 @@ input::placeholder {
 }
 
 button {
-    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-    color: #07111d;
+    background: var(--surface-pop);
+    border: 1px solid rgba(103, 218, 249, 0.18);
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
+    color: var(--text);
     cursor: pointer;
     font-weight: 700;
     min-width: 104px;
+    transition: filter 120ms ease, transform 120ms ease;
 }
 
 button:hover {
-    filter: brightness(1.06);
+    background: #163149;
+    border-color: rgba(103, 218, 249, 0.3);
+    transform: translateY(-1px);
 }
 
 code {
@@ -232,8 +560,13 @@ code {
 }
 
 @media (max-width: 960px) {
+    body {
+        overflow: auto;
+    }
+
     #content {
         flex-direction: column;
+        min-height: auto;
     }
 
     #main,
@@ -243,5 +576,18 @@ code {
 
     #side {
         flex-basis: auto;
+    }
+
+    .lobbyComposer {
+        grid-template-columns: 1fr;
+    }
+
+    .lobbySettingsGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .sectionHeading {
+        align-items: start;
+        flex-direction: column;
     }
 }

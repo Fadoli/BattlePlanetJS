@@ -115,7 +115,8 @@ class Client {
             gameUserList.push({
                 uuid: lobby.uuid,
                 name: lobby.name,
-                count: lobby.playerCount()
+                count: lobby.playerCount(),
+                settings: lobby.settings,
             })
         }
         this.socket.emit("lobbyUpdate", {
@@ -133,7 +134,8 @@ class Client {
             data: [{
                 uuid: game.uuid,
                 name: game.name,
-                count: game.playerCount()
+                count: game.playerCount(),
+                settings: game.settings,
             }]
         });
     }

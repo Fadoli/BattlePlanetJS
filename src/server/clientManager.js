@@ -90,6 +90,7 @@ module.exports = {
                         name: opts.name,
                         game: opts.game,
                         isPublic: opts.isPublic,
+                        settings: opts.settings,
                     })
                     user.moveToLobby(lobby);
                     notifyUserInLobbyList((anotherUser) => anotherUser.notifyNewLobbyGame(lobby));

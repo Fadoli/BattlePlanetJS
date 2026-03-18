@@ -17,20 +17,63 @@
   <div id="content" style="display: none;">
     <div id="main">
       <div id="lobby">
-        <div class="panelHeader">
-          <h1>BattlePlanetJS</h1>
-          <p>Create a lobby to launch the arena, or join one from the list.</p>
-        </div>
-        <form action="" id="lobbyForm">
-          <input id="lobbyNameInput" autocomplete="off" placeholder="Lobby name">
-          <button>Create</button>
-        </form>
-        <div id="games"></div>
+        <section class="lobbyHero">
+          <div class="panelHeader lobbyHeroHeader">
+            <span class="eyebrow">Orbital Arena</span>
+            <h1>BattlePlanetJS</h1>
+            <p>Create a tuned match, invite pilots in, and fight for orbit control around the sun.</p>
+          </div>
+          <form action="" id="lobbyForm" class="lobbyComposer">
+            <div class="fieldGroup fieldGroupPrimary">
+              <label for="lobbyNameInput">Lobby name</label>
+              <input id="lobbyNameInput" autocomplete="off" placeholder="Nebula Brawl">
+            </div>
+            <div class="lobbySettingsGrid">
+              <div class="fieldGroup">
+                <label for="lobbyBotCount">Bots</label>
+                <select id="lobbyBotCount">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+              <div class="fieldGroup">
+                <label for="lobbyArenaSize">Arena</label>
+                <select id="lobbyArenaSize">
+                  <option value="compact">Compact</option>
+                  <option value="standard" selected>Standard</option>
+                  <option value="wide">Wide</option>
+                </select>
+              </div>
+              <label class="toggleField" for="lobbyPublicInput">
+                <span class="toggleText">Listed publicly</span>
+                <input id="lobbyPublicInput" type="checkbox" checked>
+                <span class="toggleKnob"></span>
+              </label>
+            </div>
+            <button class="createLobbyButton" type="submit">Launch Lobby</button>
+          </form>
+        </section>
+        <section class="lobbyListSection">
+          <div class="sectionHeading">
+            <div>
+              <span class="eyebrow">Join a Match</span>
+              <h2>Open Lobbies</h2>
+            </div>
+            <p>Pick a room and jump straight into the orbit.</p>
+          </div>
+          <div id="games"></div>
+        </section>
       </div>
       <div id="gameScreen" style="display: none;">
         <div id="gameHeader" class="gameHudBar">
-          <h1>BattlePlanet</h1>
-          <div id="gameStatus"></div>
+          <div class="gameTitleRow">
+            <h1>BattlePlanet</h1>
+            <button id="fullscreenToggle" type="button">Fullscreen</button>
+          </div>
         </div>
         <div id="gameRender"></div>
         <div id="gameControls" class="gameHudBar"></div>

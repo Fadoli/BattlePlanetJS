@@ -156,8 +156,8 @@ describe('Client', () => {
   describe('notification methods', () => {
     it('should get and send lobbies to user', () => {
       const mockLobbies = [
-        { uuid: 'lobby1', name: 'Game1', playerCount: () => 2 },
-        { uuid: 'lobby2', name: 'Game2', playerCount: () => 1 }
+        { uuid: 'lobby1', name: 'Game1', playerCount: () => 2, settings: { botCount: 2, arenaSize: 'standard', isPublic: true } },
+        { uuid: 'lobby2', name: 'Game2', playerCount: () => 1, settings: { botCount: 4, arenaSize: 'wide', isPublic: false } }
       ];
       
       const getPublicSpy = jest.spyOn(LobbyManager, 'getPublic')
@@ -169,8 +169,8 @@ describe('Client', () => {
       expect(mockSocket.emit).toHaveBeenCalledWith('lobbyUpdate', {
         action: 'set',
         data: [
-          { uuid: 'lobby1', name: 'Game1', count: 2 },
-          { uuid: 'lobby2', name: 'Game2', count: 1 }
+          { uuid: 'lobby1', name: 'Game1', count: 2, settings: { botCount: 2, arenaSize: 'standard', isPublic: true } },
+          { uuid: 'lobby2', name: 'Game2', count: 1, settings: { botCount: 4, arenaSize: 'wide', isPublic: false } }
         ]
       });
 
@@ -181,14 +181,15 @@ describe('Client', () => {
       const mockGame = {
         uuid: 'game1',
         name: 'NewGame',
-        playerCount: () => 1
+        playerCount: () => 1,
+        settings: { botCount: 1, arenaSize: 'compact', isPublic: true }
       };
       
       client.notifyNewLobbyGame(mockGame);
       
       expect(mockSocket.emit).toHaveBeenCalledWith('lobbyUpdate', {
         action: 'add',
-        data: [{ uuid: 'game1', name: 'NewGame', count: 1 }]
+        data: [{ uuid: 'game1', name: 'NewGame', count: 1, settings: { botCount: 1, arenaSize: 'compact', isPublic: true } }]
       });
     });
 

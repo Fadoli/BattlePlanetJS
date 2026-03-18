@@ -60,6 +60,12 @@ const socket = createSocketClient();
 let token = localStorage.getItem("token");
 let username = localStorage.getItem("username");
 let gameId;
+const fullscreenButton = document.getElementById("fullscreenToggle");
+const LOBBY_ARENA_LABELS = {
+    compact: "Compact",
+    standard: "Standard",
+    wide: "Wide",
+};
 
 function isTypingTarget(target) {
     if (!target) {
@@ -125,12 +131,17 @@ function renderLobbyList(request) {
         }
 
         if ($(`#${game.uuid}`).length > 0) {
-            $(`#${game.uuid}`).text(`${game.name}  ${game.count} players`);
+            const updatedListing = createLobbyListing(game);
+            updatedListing.on("click", () => {
+                socket.emit("lobbyListJoin", {
+                    uuid: game.uuid,
+                });
+            });
+            $(`#${game.uuid}`).replaceWith(updatedListing);
             return;
         }
 
-        const listing = $(`<div id="${game.uuid}" class="gameListing">`);
-        listing.text(`${game.name}  ${game.count} players`);
+        const listing = createLobbyListing(game);
         listing.on("click", () => {
             socket.emit("lobbyListJoin", {
                 uuid: game.uuid,
@@ -140,7 +151,76 @@ function renderLobbyList(request) {
     });
 }
 
+function createLobbyListing(game) {
+    const settings = game.settings || {};
+    const arenaLabel = LOBBY_ARENA_LABELS[settings.arenaSize] || "Standard";
+    const botCount = Number.isFinite(settings.botCount) ? settings.botCount : 2;
+    const visibilityLabel = settings.isPublic === false ? "Private match" : "Public lobby";
+    const accessLabel = settings.isPublic === false ? "Invite only" : "Open join";
+    const listing = $(`<article id="${game.uuid}" class="gameListing">`);
+
+    listing.append(`
+        <div class="gameListingHeader">
+            <div>
+                <div class="gameListingTitle">${escapeHtml(game.name || "BattlePlanet")}</div>
+                <div class="gameListingMeta">${visibilityLabel}</div>
+            </div>
+            <div class="lobbyPopulation">${game.count} pilots</div>
+        </div>
+        <div class="lobbyTagRow">
+            <span class="lobbyTag">${arenaLabel} arena</span>
+            <span class="lobbyTag">${botCount} bots</span>
+            <span class="lobbyTag">${accessLabel}</span>
+        </div>
+        <div class="lobbyJoinHint">Click to join</div>
+    `);
+
+    return listing;
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+}
+
+function getLobbySettings() {
+    return {
+        botCount: Number.parseInt($("#lobbyBotCount").val(), 10) || 2,
+        arenaSize: $("#lobbyArenaSize").val() || "standard",
+        isPublic: $("#lobbyPublicInput").is(":checked"),
+    };
+}
+
 $(function onReady() {
+    if (fullscreenButton) {
+        fullscreenButton.addEventListener("click", async () => {
+            const fullscreenRoot = document.getElementById("main");
+            if (!fullscreenRoot) {
+                return;
+            }
+
+            if (document.fullscreenElement === fullscreenRoot) {
+                await document.exitFullscreen();
+                return;
+            }
+
+            await fullscreenRoot.requestFullscreen();
+        });
+
+        document.addEventListener("fullscreenchange", () => {
+            const fullscreenRoot = document.getElementById("main");
+            const isFullscreen = document.fullscreenElement === fullscreenRoot;
+            fullscreenButton.textContent = isFullscreen ? "Exit Fullscreen" : "Fullscreen";
+            if (BattlePlanetGame.isActive()) {
+                BattlePlanetGame.resizeToContainer();
+            }
+        });
+    }
+
     updateUserVisibility();
     updateGameVisibility();
 
@@ -204,9 +284,11 @@ $(function onReady() {
 
     $("form#lobbyForm").submit((event) => {
         event.preventDefault();
+        const settings = getLobbySettings();
         socket.emit("lobbyCreate", {
             name: $("#lobbyNameInput").val() || "BattlePlanet",
-            isPublic: true,
+            isPublic: settings.isPublic,
+            settings,
         });
         $("#lobbyNameInput").val("");
         return false;

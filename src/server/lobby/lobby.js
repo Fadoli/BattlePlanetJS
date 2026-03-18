@@ -14,10 +14,11 @@ class Lobby {
      * @param {string} name
      * @memberof Lobby
      */
-    constructor({owner, name, onLobbyEnd, OnLobbyEnd} = {}) {
+    constructor({owner, name, settings, onLobbyEnd, OnLobbyEnd} = {}) {
         this.owner = owner;
         this.uuid = util.uuidv4();
         this.name = name;
+        this.settings = settings || {};
         this.onLobbyEnd = onLobbyEnd || OnLobbyEnd;
         this.tick = undefined;
 
@@ -25,7 +26,10 @@ class Lobby {
          * @type {Object.<string,Client>}
          */
         this.players = {};
-        this.game = new BattlePlanetGame({ name });
+        this.game = new BattlePlanetGame({
+            name,
+            settings: this.settings,
+        });
         this.addPlayer(owner);
     }
 

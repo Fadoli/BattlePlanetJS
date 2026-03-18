@@ -10,12 +10,13 @@
     const RESIZE_THROTTLE_MS = 100;
     const CAMERA_LERP = 0.12;
     const CAMERA_SUN_WEIGHT = 0.35;
-    const MIN_ZOOM = 0.55;
+    const MIN_ZOOM = 0.42;
     const MAX_ZOOM = 1.45;
     const DEFAULT_ZOOM = 0.78;
     const ZOOM_STEP = 0.08;
     const INTERPOLATION_DELAY_MS = 120;
     const MAX_SNAPSHOT_BUFFER = 90;
+    const UI_TEXT_REFRESH_MS = 140;
 
     const app = new PIXI.Application({
         backgroundColor: 0x07111d,
@@ -29,11 +30,35 @@
 
     const starField = new PIXI.Graphics();
     const worldLayer = new PIXI.Container();
+    const staticWorldLayer = new PIXI.Container();
+    const spriteWorldLayer = new PIXI.Container();
     const bodyGraphics = new PIXI.Graphics();
-    const statusElement = document.getElementById("gameStatus");
     const controlsElement = document.getElementById("gameControls");
+    const leaderboardElement = document.createElement("div");
+    leaderboardElement.className = "leaderboardOverlay";
+    leaderboardElement.hidden = true;
+    hostElement.appendChild(leaderboardElement);
+    const audioState = {
+        context: null,
+        masterGain: null,
+        lastExplosionId: null,
+        playedExplosions: new Set(),
+    };
+    const labelCache = new Map();
+    const rockSpriteCache = new Map();
+    const explosionSpriteCache = new Map();
+    const staticWorldSprites = {
+        arena: null,
+        sun: null,
+    };
+    const textureCache = {
+        rock: null,
+        explosion: null,
+    };
 
     app.stage.addChild(starField);
+    worldLayer.addChild(staticWorldLayer);
+    worldLayer.addChild(spriteWorldLayer);
     worldLayer.addChild(bodyGraphics);
     app.stage.addChild(worldLayer);
 
@@ -41,7 +66,8 @@
     let zoom = DEFAULT_ZOOM;
     let inputSender = () => {};
     let camera = { x: 0, y: 0 };
-    let pointerState = { x: SCREEN_CENTER.x, y: SCREEN_CENTER.y };
+    let pointerState = { x: SCREEN_CENTER.x, y: SCREEN_CENTER.y, down: false };
+    let showLeaderboard = false;
     let networkState = {
         status: "waiting",
         serverTime: 0,
@@ -51,12 +77,18 @@
         players: [],
         enemies: [],
         rocks: [],
+        explosions: [],
         playerId: undefined,
     };
     let snapshotBuffer = [];
     let serverOffsetEstimate = null;
+    let staticWorldCacheKey = "";
+    let lastUiTextUpdateAt = 0;
+    let lastControlsText = "";
+    let lastLeaderboardText = "";
 
     drawStarField();
+    ensureSpriteTextures();
     attachInputListeners();
     app.stop();
     render();
@@ -76,9 +108,9 @@
 
             const worldPoint = getWorldPositionFromScreen(pointerState.x, pointerState.y);
             inputSender({
-                type: "aim",
                 x: worldPoint.x,
                 y: worldPoint.y,
+                fireHeld: pointerState.down,
             });
         });
 
@@ -88,11 +120,31 @@
                 return;
             }
 
+            pointerState.down = true;
+            ensureAudio();
+            playShootSound();
             const worldPoint = getWorldPositionFromScreen(pointerState.x, pointerState.y);
             inputSender({
-                type: "fire",
                 x: worldPoint.x,
                 y: worldPoint.y,
+                fireHeld: true,
+                firePulse: true,
+            });
+        });
+
+        window.addEventListener("mouseup", () => {
+            if (!pointerState.down) {
+                return;
+            }
+            pointerState.down = false;
+            if (!battlePlanetGame.isActive() || !getPlayer()) {
+                return;
+            }
+            const worldPoint = getWorldPositionFromScreen(pointerState.x, pointerState.y);
+            inputSender({
+                x: worldPoint.x,
+                y: worldPoint.y,
+                fireHeld: false,
             });
         });
 
@@ -109,6 +161,21 @@
         window.addEventListener("resize", () => {
             battlePlanetGame.resizeToContainer();
         });
+
+        window.addEventListener("keydown", (event) => {
+            if (event.key !== "Tab" || !battlePlanetGame.isActive()) {
+                return;
+            }
+            event.preventDefault();
+            showLeaderboard = true;
+        });
+
+        window.addEventListener("keyup", (event) => {
+            if (event.key !== "Tab") {
+                return;
+            }
+            showLeaderboard = false;
+        });
     }
 
     function createSeededRandom(seed) {
@@ -117,6 +184,77 @@
             state = (state * 1664525 + 1013904223) % 4294967296;
             return state / 4294967296;
         };
+    }
+
+    function ensureAudio() {
+        if (audioState.context) {
+            if (audioState.context.state === "suspended") {
+                audioState.context.resume();
+            }
+            return audioState.context;
+        }
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+            return null;
+        }
+
+        const context = new AudioContextClass();
+        const masterGain = context.createGain();
+        masterGain.gain.value = 0.06;
+        masterGain.connect(context.destination);
+
+        audioState.context = context;
+        audioState.masterGain = masterGain;
+        return context;
+    }
+
+    function playTone({ frequency, duration, type, volume, rampTo = 0.0001, endFrequency }) {
+        const context = ensureAudio();
+        if (!context || !audioState.masterGain) {
+            return;
+        }
+
+        const oscillator = context.createOscillator();
+        const gainNode = context.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, context.currentTime);
+        if (typeof endFrequency === "number") {
+            oscillator.frequency.exponentialRampToValueAtTime(endFrequency, context.currentTime + duration);
+        }
+        gainNode.gain.setValueAtTime(volume, context.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(rampTo, context.currentTime + duration);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioState.masterGain);
+        oscillator.start();
+        oscillator.stop(context.currentTime + duration);
+    }
+
+    function playShootSound() {
+        playTone({
+            frequency: 240,
+            endFrequency: 120,
+            duration: 0.08,
+            type: "triangle",
+            volume: 0.3,
+        });
+    }
+
+    function playExplosionSound(scale = 1) {
+        playTone({
+            frequency: 180 * scale,
+            endFrequency: 48,
+            duration: 0.18,
+            type: "sawtooth",
+            volume: 0.24,
+        });
+        playTone({
+            frequency: 90 * scale,
+            endFrequency: 36,
+            duration: 0.24,
+            type: "triangle",
+            volume: 0.16,
+        });
     }
 
     function lerp(start, end, alpha) {
@@ -155,6 +293,124 @@
         }
     }
 
+    function ensureSpriteTextures() {
+        if (!textureCache.rock) {
+            const rockGraphic = new PIXI.Graphics();
+            rockGraphic.beginFill(0xffffff, 0.18);
+            rockGraphic.drawCircle(0, 0, 10);
+            rockGraphic.endFill();
+            rockGraphic.beginFill(0xffffff, 0.88);
+            rockGraphic.drawCircle(0, 0, 6);
+            rockGraphic.endFill();
+            textureCache.rock = app.renderer.generateTexture(rockGraphic, {
+                region: new PIXI.Rectangle(-12, -12, 24, 24),
+            });
+            rockGraphic.destroy();
+        }
+
+        if (!textureCache.explosion) {
+            const explosionGraphic = new PIXI.Graphics();
+            explosionGraphic.beginFill(0xffffff, 0.2);
+            explosionGraphic.drawCircle(0, 0, 38);
+            explosionGraphic.endFill();
+            explosionGraphic.lineStyle(5, 0xffffff, 0.55);
+            explosionGraphic.drawCircle(0, 0, 24);
+            explosionGraphic.lineStyle(0);
+            textureCache.explosion = app.renderer.generateTexture(explosionGraphic, {
+                region: new PIXI.Rectangle(-40, -40, 80, 80),
+            });
+            explosionGraphic.destroy();
+        }
+    }
+
+    function rebuildStaticWorldSprites() {
+        const cacheKey = `${Math.round(networkState.worldRadius)}:${Math.round(networkState.sun.radius)}`;
+        if (cacheKey === staticWorldCacheKey) {
+            return;
+        }
+
+        staticWorldCacheKey = cacheKey;
+        staticWorldLayer.removeChildren();
+        if (staticWorldSprites.arena) {
+            staticWorldSprites.arena.destroy();
+        }
+        if (staticWorldSprites.sun) {
+            staticWorldSprites.sun.destroy();
+        }
+
+        const arenaGraphic = new PIXI.Graphics();
+        arenaGraphic.lineStyle(10, 0x0d2335, 0.9);
+        arenaGraphic.drawCircle(0, 0, networkState.worldRadius);
+        arenaGraphic.lineStyle(4, 0x60d4ff, 0.32);
+        arenaGraphic.drawCircle(0, 0, networkState.worldRadius);
+        arenaGraphic.lineStyle(1.5, 0xffb347, 0.3);
+        arenaGraphic.drawCircle(0, 0, networkState.worldRadius * 0.82);
+        arenaGraphic.lineStyle(0);
+        const arenaTexture = app.renderer.generateTexture(arenaGraphic, {
+            region: new PIXI.Rectangle(
+                -(networkState.worldRadius + 16),
+                -(networkState.worldRadius + 16),
+                (networkState.worldRadius + 16) * 2,
+                (networkState.worldRadius + 16) * 2
+            ),
+        });
+        arenaGraphic.destroy();
+
+        const sunExtent = networkState.sun.radius + 54;
+        const sunGraphic = new PIXI.Graphics();
+        sunGraphic.beginFill(0xffb347, 0.08);
+        sunGraphic.drawCircle(0, 0, networkState.sun.radius + 42);
+        sunGraphic.endFill();
+        sunGraphic.beginFill(0xffd97a, 0.12);
+        sunGraphic.drawCircle(0, 0, networkState.sun.radius + 22);
+        sunGraphic.endFill();
+        sunGraphic.beginFill(0xffc857, 0.92);
+        sunGraphic.drawCircle(0, 0, networkState.sun.radius);
+        sunGraphic.endFill();
+        sunGraphic.beginFill(0xffffff, 0.18);
+        sunGraphic.drawCircle(
+            -networkState.sun.radius * 0.22,
+            -networkState.sun.radius * 0.24,
+            networkState.sun.radius * 0.52
+        );
+        sunGraphic.endFill();
+        sunGraphic.lineStyle(8, 0xffe29a, 0.12);
+        sunGraphic.drawCircle(0, 0, networkState.sun.radius + 10);
+        sunGraphic.lineStyle(0);
+        const sunTexture = app.renderer.generateTexture(sunGraphic, {
+            region: new PIXI.Rectangle(-sunExtent, -sunExtent, sunExtent * 2, sunExtent * 2),
+        });
+        sunGraphic.destroy();
+
+        staticWorldSprites.arena = new PIXI.Sprite(arenaTexture);
+        staticWorldSprites.arena.anchor.set(0.5);
+        staticWorldSprites.sun = new PIXI.Sprite(sunTexture);
+        staticWorldSprites.sun.anchor.set(0.5);
+        staticWorldLayer.addChild(staticWorldSprites.arena, staticWorldSprites.sun);
+    }
+
+    function updateStaticWorldSprites() {
+        rebuildStaticWorldSprites();
+        const sunX = worldToScreenX(networkState.sun.x);
+        const sunY = worldToScreenY(networkState.sun.y);
+
+        if (staticWorldSprites.arena) {
+            staticWorldSprites.arena.x = sunX;
+            staticWorldSprites.arena.y = sunY;
+            staticWorldSprites.arena.scale.set(zoom);
+            const player = getPlayer();
+            const playerDistance = player ? distanceBetween(player, networkState.sun) : 0;
+            staticWorldSprites.arena.alpha = 1;
+            staticWorldSprites.arena.tint = playerDistance > networkState.worldRadius * 0.82 ? 0x8ee0ff : 0xffffff;
+        }
+
+        if (staticWorldSprites.sun) {
+            staticWorldSprites.sun.x = sunX;
+            staticWorldSprites.sun.y = sunY;
+            staticWorldSprites.sun.scale.set(zoom);
+        }
+    }
+
     function getPlayer() {
         return networkState.players.find((player) => player.id === networkState.playerId);
     }
@@ -166,6 +422,7 @@
             players: state.players.map((player) => ({ ...player })),
             enemies: state.enemies.map((enemy) => ({ ...enemy })),
             rocks: state.rocks.map((rock) => ({ ...rock })),
+            explosions: (state.explosions || []).map((explosion) => ({ ...explosion })),
         };
     }
 
@@ -223,6 +480,7 @@
             players: interpolateEntityList(previous.players, next.players, alpha),
             enemies: interpolateEntityList(previous.enemies, next.enemies, alpha),
             rocks: interpolateEntityList(previous.rocks, next.rocks, alpha),
+            explosions: interpolateEntityList(previous.explosions || [], next.explosions || [], alpha),
             playerId: next.playerId || previous.playerId,
         };
     }
@@ -298,54 +556,144 @@
     }
 
     function updateStatusText() {
-        const player = getPlayer();
-        const playerDistance = player ? Math.round(distanceBetween(player, networkState.sun)) : 0;
-        const playerSpeed = player ? getSpeed(player).toFixed(2) : "0.00";
         const aliveEnemies = networkState.enemies.filter((enemy) => enemy.alive !== false).length;
-        const teammates = networkState.players.length;
-        const instabilityPercent = player ? Math.round(((player.modifier || 1) - 1) * 100) : 0;
-
-        const lines = [
-            `Instability: +${instabilityPercent}%    Speed: ${playerSpeed}    Teammates: ${teammates}`,
-            `Orbit radius: ${playerDistance} / ${networkState.worldRadius}    Enemies: ${aliveEnemies}    Zoom: ${zoom.toFixed(2)}x`,
-        ];
-
-        if (networkState.status === "won") {
-            lines.push("Round cleared. Restarting automatically...");
-        } else if (networkState.status === "lost") {
-            lines.push("All players are down. Restarting automatically...");
-        } else if (!player) {
-            lines.push("Waiting for your player state from the server...");
-        } else {
-            lines.push("Hits do not kill directly: they increase how strongly gravity and impacts move a planet.");
+        const controlsText = networkState.status === "won"
+            ? "Round cleared. Restarting automatically. Hold Tab for leaderboard."
+            : networkState.status === "lost"
+                ? "All players are down. Restarting automatically. Hold Tab for leaderboard."
+                : `Aim with the cursor, click to eject a rock, wheel to zoom, hold Tab for leaderboard. Enemies left: ${aliveEnemies}.`;
+        const shouldRefreshUi = Date.now() - lastUiTextUpdateAt >= UI_TEXT_REFRESH_MS;
+        if (shouldRefreshUi && controlsText !== lastControlsText) {
+            controlsElement.textContent = controlsText;
+            lastControlsText = controlsText;
         }
-
-        statusElement.textContent = lines.join("\n");
-        controlsElement.textContent = "Aim with the cursor, click to eject a rock, wheel to zoom. Hits raise instability up to +500%, making gravity and collisions much harsher.";
+        leaderboardElement.hidden = !showLeaderboard;
+        if (showLeaderboard) {
+            const entries = [...networkState.players]
+                .sort((left, right) => (right.modifier || 1) - (left.modifier || 1))
+                .map((entry, index) => {
+                    const instabilityPercent = Math.round(((entry.modifier || 1) - 1) * 100);
+                    const marker = entry.id === networkState.playerId ? ">" : " ";
+                    return `${marker} ${index + 1}. ${entry.name}  +${instabilityPercent}%`;
+                });
+            const bots = networkState.enemies
+                .sort((left, right) => (right.modifier || 1) - (left.modifier || 1))
+                .map((entry) => `${entry.name}  +${Math.round(((entry.modifier || 1) - 1) * 100)}%`);
+            const leaderboardText = ["Leaderboard", ...entries, "", "Bots", ...bots, "", `Enemies left: ${aliveEnemies}`].join("\n");
+            if (shouldRefreshUi && leaderboardText !== lastLeaderboardText) {
+                leaderboardElement.textContent = leaderboardText;
+                lastLeaderboardText = leaderboardText;
+            }
+        } else if (lastLeaderboardText) {
+            lastLeaderboardText = "";
+        }
+        if (shouldRefreshUi) {
+            lastUiTextUpdateAt = Date.now();
+        }
     }
 
-    function drawArenaLimit() {
-        const centerX = worldToScreenX(networkState.sun.x);
-        const centerY = worldToScreenY(networkState.sun.y);
-        const player = getPlayer();
-        const playerDistance = player ? distanceBetween(player, networkState.sun) : 0;
-        const warningAlpha = playerDistance > networkState.worldRadius * 0.82 ? 0.65 : 0.28;
+    function updateAudioFromState() {
+        const explosions = networkState.explosions || [];
+        const recentIds = new Set();
 
-        bodyGraphics.lineStyle(3, 0x60d4ff, warningAlpha);
-        bodyGraphics.drawCircle(centerX, centerY, networkState.worldRadius);
-        bodyGraphics.lineStyle(1.5, 0xffb347, 0.3);
-        bodyGraphics.drawCircle(centerX, centerY, networkState.worldRadius * 0.82);
-        bodyGraphics.lineStyle(0);
+        for (const explosion of explosions) {
+            recentIds.add(explosion.id);
+            if (!audioState.playedExplosions.has(explosion.id)) {
+                ensureAudio();
+                playExplosionSound(Math.max(0.8, Math.min(1.6, explosion.radius / 18)));
+                audioState.playedExplosions.add(explosion.id);
+            }
+        }
+
+        audioState.playedExplosions.forEach((id) => {
+            if (!recentIds.has(id)) {
+                audioState.playedExplosions.delete(id);
+            }
+        });
+    }
+
+    function getPlanetLabel(planet, isLocalPlayer) {
+        const instabilityPercent = Math.round(((planet.modifier || 1) - 1) * 100);
+        const fallbackName = isLocalPlayer ? "You" : (planet.team === "enemy" ? "Bot" : "Player");
+        return `${planet.name || fallbackName}  +${instabilityPercent}%`;
+    }
+
+    function renderPlanetLabel(planet, x, y, isLocalPlayer) {
+        const labelKey = planet.id;
+        const labelText = getPlanetLabel(planet, isLocalPlayer);
+        let label = labelCache.get(labelKey);
+
+        if (!label) {
+            label = new PIXI.Text(labelText, {
+                fill: 0xe8f0ff,
+                fontFamily: "\"Trebuchet MS\", \"Segoe UI\", sans-serif",
+                fontSize: 14,
+                fontWeight: "700",
+                stroke: 0x07111d,
+                strokeThickness: 4,
+                letterSpacing: 0.4,
+            });
+            label.anchor.set(0.5, 1);
+            label.resolution = 1;
+            labelCache.set(labelKey, label);
+            worldLayer.addChild(label);
+        }
+
+        if (label.__labelText !== labelText) {
+            label.text = labelText;
+            label.__labelText = labelText;
+        }
+
+        const nextFill = isLocalPlayer ? 0xffffff : (planet.team === "enemy" ? 0xffd7bf : 0xd7e6f6);
+        if (label.__labelFill !== nextFill) {
+            label.style.fill = nextFill;
+            label.__labelFill = nextFill;
+        }
+        label.alpha = planet.alive === false ? 0.4 : 0.95;
+        label.x = x;
+        label.y = y - planet.radius - 12;
+    }
+
+    function cleanupLabels() {
+        const activeIds = new Set([
+            ...networkState.players.map((player) => player.id),
+            ...networkState.enemies.map((enemy) => enemy.id),
+        ]);
+
+        labelCache.forEach((label, id) => {
+            if (activeIds.has(id)) {
+                return;
+            }
+            worldLayer.removeChild(label);
+            label.destroy();
+            labelCache.delete(id);
+        });
     }
 
     function renderPlanet(planet, isLocalPlayer) {
         const x = worldToScreenX(planet.x);
         const y = worldToScreenY(planet.y);
         const alpha = planet.alive === false ? 0.35 : 0.95;
+        const instability = Math.max(0, Math.min(1, ((planet.modifier || 1) - 1) / 5));
+        const auraRadius = planet.radius + 12 + instability * 12;
+
+        bodyGraphics.beginFill(planet.color, isLocalPlayer ? 0.18 + instability * 0.08 : 0.1 + instability * 0.06);
+        bodyGraphics.drawCircle(x, y, auraRadius);
+        bodyGraphics.endFill();
+
+        bodyGraphics.beginFill(0xffffff, alpha * 0.14);
+        bodyGraphics.drawCircle(x - planet.radius * 0.22, y - planet.radius * 0.24, planet.radius * 0.78);
+        bodyGraphics.endFill();
 
         bodyGraphics.beginFill(planet.color, alpha);
         bodyGraphics.drawCircle(x, y, planet.radius);
         bodyGraphics.endFill();
+
+        bodyGraphics.lineStyle(isLocalPlayer ? 3 : 2, isLocalPlayer ? 0xffffff : 0xe4edf7, 0.16 + instability * 0.14);
+        bodyGraphics.drawCircle(x, y, planet.radius + 4 + instability * 2);
+        bodyGraphics.lineStyle(1.5, 0xffffff, 0.18);
+        bodyGraphics.drawCircle(x, y, Math.max(8, planet.radius * 0.55));
+        bodyGraphics.lineStyle(0);
 
         const outlineColor = isLocalPlayer ? 0xffffff : 0xc9d6e2;
         const outlineWidth = isLocalPlayer ? 3 : 2;
@@ -362,6 +710,8 @@
         bodyGraphics.lineTo(rightX, rightY);
         bodyGraphics.lineTo(noseX, noseY);
         bodyGraphics.lineStyle(0);
+
+        renderPlanetLabel(planet, x, y, isLocalPlayer);
     }
 
     function renderPointerGuide() {
@@ -416,18 +766,74 @@
         bodyGraphics.lineStyle(0);
     }
 
+    function syncRockSprites() {
+        const activeIds = new Set();
+
+        for (const rock of networkState.rocks) {
+            activeIds.add(rock.id);
+            let sprite = rockSpriteCache.get(rock.id);
+            if (!sprite) {
+                sprite = new PIXI.Sprite(textureCache.rock);
+                sprite.anchor.set(0.5);
+                rockSpriteCache.set(rock.id, sprite);
+                spriteWorldLayer.addChild(sprite);
+            }
+
+            sprite.x = worldToScreenX(rock.x);
+            sprite.y = worldToScreenY(rock.y);
+            sprite.scale.set((rock.radius * 2 * zoom) / 24);
+            sprite.alpha = 0.95;
+            sprite.tint = rock.color;
+        }
+
+        rockSpriteCache.forEach((sprite, id) => {
+            if (activeIds.has(id)) {
+                return;
+            }
+            spriteWorldLayer.removeChild(sprite);
+            sprite.destroy();
+            rockSpriteCache.delete(id);
+        });
+    }
+
+    function syncExplosionSprites() {
+        const activeIds = new Set();
+
+        for (const explosion of networkState.explosions || []) {
+            activeIds.add(explosion.id);
+            let sprite = explosionSpriteCache.get(explosion.id);
+            if (!sprite) {
+                sprite = new PIXI.Sprite(textureCache.explosion);
+                sprite.anchor.set(0.5);
+                explosionSpriteCache.set(explosion.id, sprite);
+                spriteWorldLayer.addChild(sprite);
+            }
+
+            const alpha = explosion.maxTtl ? Math.max(0, explosion.ttl / explosion.maxTtl) : 0.5;
+            const radius = explosion.radius * (1.35 - alpha * 0.35);
+            sprite.x = worldToScreenX(explosion.x);
+            sprite.y = worldToScreenY(explosion.y);
+            sprite.scale.set((radius * 2 * zoom) / 80);
+            sprite.alpha = alpha * 0.72;
+            sprite.tint = explosion.color;
+        }
+
+        explosionSpriteCache.forEach((sprite, id) => {
+            if (activeIds.has(id)) {
+                return;
+            }
+            spriteWorldLayer.removeChild(sprite);
+            sprite.destroy();
+            explosionSpriteCache.delete(id);
+        });
+    }
+
     function render() {
         bodyGraphics.clear();
-        drawArenaLimit();
-
-        const sunX = worldToScreenX(networkState.sun.x);
-        const sunY = worldToScreenY(networkState.sun.y);
-        bodyGraphics.beginFill(0xffc857, 0.92);
-        bodyGraphics.drawCircle(sunX, sunY, networkState.sun.radius);
-        bodyGraphics.endFill();
-        bodyGraphics.lineStyle(8, 0xffe29a, 0.08);
-        bodyGraphics.drawCircle(sunX, sunY, networkState.sun.radius + 10);
-        bodyGraphics.lineStyle(0);
+        cleanupLabels();
+        updateStaticWorldSprites();
+        syncRockSprites();
+        syncExplosionSprites();
 
         for (const player of networkState.players) {
             renderPlanet(player, player.id === networkState.playerId);
@@ -435,12 +841,6 @@
 
         for (const enemy of networkState.enemies) {
             renderPlanet(enemy, false);
-        }
-
-        for (const rock of networkState.rocks) {
-            bodyGraphics.beginFill(rock.color, 0.95);
-            bodyGraphics.drawCircle(worldToScreenX(rock.x), worldToScreenY(rock.y), rock.radius);
-            bodyGraphics.endFill();
         }
 
         renderSunDirectionGuide();
@@ -452,6 +852,7 @@
     app.ticker.add(() => {
         networkState = getInterpolatedNetworkState();
         updateCamera();
+        updateAudioFromState();
         render();
     });
 
@@ -468,9 +869,9 @@
             }
 
             resizeTimestamp = Date.now();
-            const mainElement = document.getElementById("main");
-            const ratioHeight = mainElement.offsetHeight / DEFAULT_SIZE.height;
-            const ratioWidth = mainElement.offsetWidth / DEFAULT_SIZE.width;
+            const bounds = hostElement.getBoundingClientRect();
+            const ratioHeight = bounds.height / DEFAULT_SIZE.height;
+            const ratioWidth = bounds.width / DEFAULT_SIZE.width;
             const scale = Math.min(ratioWidth, ratioHeight);
 
             app.view.style.width = `${DEFAULT_SIZE.width * scale}px`;
@@ -519,8 +920,21 @@
                 players: [],
                 enemies: [],
                 rocks: [],
+                explosions: [],
                 playerId: undefined,
             };
+            audioState.playedExplosions.clear();
+            rockSpriteCache.forEach((sprite) => sprite.destroy());
+            rockSpriteCache.clear();
+            explosionSpriteCache.forEach((sprite) => sprite.destroy());
+            explosionSpriteCache.clear();
+            staticWorldLayer.removeChildren();
+            staticWorldCacheKey = "";
+            lastUiTextUpdateAt = 0;
+            lastControlsText = "";
+            lastLeaderboardText = "";
+            showLeaderboard = false;
+            leaderboardElement.hidden = true;
         },
         isActive() {
             return app.ticker.started && hostElement.style.display !== "none";

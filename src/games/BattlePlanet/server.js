@@ -20,6 +20,35 @@ const BASE_MODIFIER = 1;
 const MAX_MODIFIER = 6;
 const ROCK_HIT_MODIFIER_GAIN = 0.6;
 const SUN_HIT_MODIFIER_GAIN = 1.2;
+const PLANET_COLLISION_MODIFIER_GAIN = 0.18;
+const PLAYER_FIRE_COOLDOWN = 0.08;
+const PLAYER_CLICK_FIRE_COOLDOWN = 0.045;
+const EXPLOSION_TTL = 0.35;
+const DEFAULT_SETTINGS = Object.freeze({
+    botCount: 2,
+    arenaSize: "standard",
+});
+const ARENA_PRESETS = Object.freeze({
+    compact: {
+        worldRadius: 1500,
+        spawnOrbitRadius: 670,
+    },
+    standard: {
+        worldRadius: 1750,
+        spawnOrbitRadius: 760,
+    },
+    wide: {
+        worldRadius: 2150,
+        spawnOrbitRadius: 930,
+    },
+});
+const ENEMY_PALETTE = [
+    0xff6b6b,
+    0xffb347,
+    0xff8fab,
+    0x9f86ff,
+    0x87f5c7,
+];
 
 function normalizeAngle(angle) {
     let value = angle;
@@ -89,6 +118,8 @@ function resolvePlanetCollision(a, b) {
     a.vy -= (impulse * ny) / effectiveMassA;
     b.vx += (impulse * nx) / effectiveMassB;
     b.vy += (impulse * ny) / effectiveMassB;
+    increaseModifier(a, PLANET_COLLISION_MODIFIER_GAIN);
+    increaseModifier(b, PLANET_COLLISION_MODIFIER_GAIN);
 }
 
 function bounceRock(body, rock) {
@@ -125,12 +156,27 @@ class GameManager {
     constructor(options = {}) {
         this.uuid = uuidv4();
         this.name = options.name || "BattlePlanet";
+        this.settings = this.sanitizeSettings(options.settings);
+        this.arena = ARENA_PRESETS[this.settings.arenaSize];
         this.tick = undefined;
         this.resetTimeout = undefined;
         this.tickNumber = 0;
         this.players = {};
         this.inputs = {};
         this.state = this.createRoundState();
+    }
+
+    sanitizeSettings(settings = {}) {
+        const arenaSize = ARENA_PRESETS[settings.arenaSize] ? settings.arenaSize : DEFAULT_SETTINGS.arenaSize;
+        const parsedBotCount = Number.parseInt(settings.botCount, 10);
+        const botCount = Number.isFinite(parsedBotCount)
+            ? Math.max(0, Math.min(5, parsedBotCount))
+            : DEFAULT_SETTINGS.botCount;
+
+        return {
+            botCount,
+            arenaSize,
+        };
     }
 
     createRoundState() {
@@ -143,16 +189,33 @@ class GameManager {
                 mass: SUN_MASS,
             },
             rocks: [],
+            explosions: [],
             enemies: this.createEnemies(),
         };
     }
 
     createEnemies() {
-        return [
-            this.createEnemy("enemy-alpha", -880, 0, 0, -3.6, 18, 2, 0xff6b6b),
-            this.createEnemy("enemy-beta", 0, -1020, 3.1, 0, 20, 3, 0xffb347),
-            this.createEnemy("enemy-gamma", 0, 1110, -2.9, 0, 16, 2, 0xff8fab),
-        ];
+        const enemies = [];
+        const count = this.settings.botCount;
+        const orbitRadius = Math.min(this.arena.worldRadius * 0.66, this.arena.spawnOrbitRadius + 240);
+
+        for (let index = 0; index < count; index += 1) {
+            const angle = ((Math.PI * 2) / Math.max(1, count)) * index;
+            const speed = 2.8 + (index % 3) * 0.32;
+            const radius = 16 + (index % 3) * 2;
+            enemies.push(this.createEnemy(
+                `bot-${index + 1}`,
+                Math.cos(angle) * orbitRadius,
+                Math.sin(angle) * orbitRadius,
+                -Math.sin(angle) * speed,
+                Math.cos(angle) * speed,
+                radius,
+                2 + (index % 2),
+                ENEMY_PALETTE[index % ENEMY_PALETTE.length]
+            ));
+        }
+
+        return enemies;
     }
 
     createEnemy(id, x, y, vx, vy, radius, health, color) {
@@ -178,7 +241,7 @@ class GameManager {
 
     spawnPlayerBody(token, index) {
         const angle = ((Math.PI * 2) / Math.max(1, index + 1)) * index - Math.PI / 2;
-        const orbitRadius = 760 + (index % 2) * 120;
+        const orbitRadius = this.arena.spawnOrbitRadius + (index % 2) * 120;
         const orbitalSpeed = 3.7 - (index % 2) * 0.25;
         return {
             id: token,
@@ -207,7 +270,7 @@ class GameManager {
         if (!existing) {
             const index = Object.keys(this.players).length - 1;
             this.state[player.token] = this.spawnPlayerBody(player.token, index);
-            this.inputs[player.token] = { aimX: 0, aimY: 0, fire: false };
+            this.inputs[player.token] = { aimX: 0, aimY: 0, fireHeld: false, firePulse: false };
         }
 
         if (!this.tick) {
@@ -258,8 +321,11 @@ class GameManager {
             input.aimY = payload.y;
         }
 
-        if (payload.type === "fire") {
-            input.fire = true;
+        if (typeof payload.fireHeld === "boolean") {
+            input.fireHeld = payload.fireHeld;
+        }
+        if (payload.firePulse === true) {
+            input.firePulse = true;
         }
     }
 
@@ -269,6 +335,8 @@ class GameManager {
         const players = this.getAlivePlayers();
         const enemies = this.state.enemies.filter((enemy) => enemy.alive);
         const planets = [...players, ...enemies];
+
+        this.updateExplosions(dt);
 
         if (this.state.status !== "playing") {
             this.broadcastState();
@@ -310,11 +378,14 @@ class GameManager {
             }
 
             player.angle = Math.atan2(input.aimY - player.y, input.aimX - player.x);
-            if (input.fire && player.shootCooldown <= 0) {
+            if (input.firePulse && player.shootCooldown <= 0) {
                 this.ejectRock(player, player.angle, PLAYER_RECOIL, PLAYER_EJECT_SPEED, ROCK_MASS, 0xcfd8dc);
-                player.shootCooldown = 0.18;
+                player.shootCooldown = PLAYER_CLICK_FIRE_COOLDOWN;
+            } else if (input.fireHeld && player.shootCooldown <= 0) {
+                this.ejectRock(player, player.angle, PLAYER_RECOIL, PLAYER_EJECT_SPEED, ROCK_MASS, 0xcfd8dc);
+                player.shootCooldown = PLAYER_FIRE_COOLDOWN;
             }
-            input.fire = false;
+            input.firePulse = false;
         }
     }
 
@@ -383,6 +454,7 @@ class GameManager {
 
     ejectRock(owner, angle, recoil, speed, mass, color) {
         const ejectDistance = owner.radius + ROCK_RADIUS + 6;
+        const instability = owner.modifier || BASE_MODIFIER;
 
         this.state.rocks.push({
             id: uuidv4(),
@@ -399,8 +471,8 @@ class GameManager {
             isAffectedByGravity: true,
         });
 
-        owner.vx -= Math.cos(angle) * recoil;
-        owner.vy -= Math.sin(angle) * recoil;
+        owner.vx -= Math.cos(angle) * recoil * instability;
+        owner.vy -= Math.sin(angle) * recoil * instability;
     }
 
     updateRocks(dt, planets) {
@@ -415,9 +487,28 @@ class GameManager {
             return true;
         });
 
+        for (let index = 0; index < this.state.rocks.length; index += 1) {
+            const rock = this.state.rocks[index];
+            for (let secondIndex = index + 1; secondIndex < this.state.rocks.length; secondIndex += 1) {
+                const otherRock = this.state.rocks[secondIndex];
+                if (distanceBetween(rock, otherRock) >= rock.radius + otherRock.radius) {
+                    continue;
+                }
+
+                rock.ttl = 0;
+                otherRock.ttl = 0;
+                this.spawnExplosion(
+                    (rock.x + otherRock.x) / 2,
+                    (rock.y + otherRock.y) / 2,
+                    18,
+                    0xffd8a8
+                );
+            }
+        }
+
         for (const rock of this.state.rocks) {
             for (const planet of planets) {
-                if (!planet.alive || rock.ownerId === planet.id || rock.team === planet.team) {
+                if (!planet.alive || rock.ownerId === planet.id) {
                     continue;
                 }
 
@@ -428,8 +519,11 @@ class GameManager {
                 bounceRock(planet, rock);
                 increaseModifier(planet, ROCK_HIT_MODIFIER_GAIN);
                 rock.ttl = Math.min(rock.ttl, 0.25);
+                this.spawnExplosion(rock.x, rock.y, 16, rock.color);
             }
         }
+
+        this.state.rocks = this.state.rocks.filter((rock) => rock.ttl > 0);
     }
 
     handleSunCollisions(planets) {
@@ -443,7 +537,13 @@ class GameManager {
         }
 
         this.state.rocks = this.state.rocks.filter(
-            (rock) => distanceBetween(rock, this.state.sun) >= rock.radius + this.state.sun.radius
+            (rock) => {
+                const collides = distanceBetween(rock, this.state.sun) < rock.radius + this.state.sun.radius;
+                if (collides) {
+                    this.spawnExplosion(rock.x, rock.y, 18, 0xffd166);
+                }
+                return !collides;
+            }
         );
     }
 
@@ -453,7 +553,7 @@ class GameManager {
         const distance = Math.sqrt(dx * dx + dy * dy) || 0.0001;
         const normalX = dx / distance;
         const normalY = dy / distance;
-        const minDistance = planet.radius + this.state.sun.radius + 6;
+        const minDistance = planet.radius + this.state.sun.radius;
         const overlap = minDistance - distance;
         const incomingSpeed = planet.vx * normalX + planet.vy * normalY;
 
@@ -470,6 +570,12 @@ class GameManager {
         planet.vx = normalX * bounceSpeed + tangentX * tangentSpeed * 0.92;
         planet.vy = normalY * bounceSpeed + tangentY * tangentSpeed * 0.92;
         increaseModifier(planet, SUN_HIT_MODIFIER_GAIN);
+        this.spawnExplosion(
+            planet.x - normalX * planet.radius,
+            planet.y - normalY * planet.radius,
+            24,
+            0xffe29a
+        );
 
     }
 
@@ -478,7 +584,7 @@ class GameManager {
             if (!planet.alive) {
                 continue;
             }
-            if (distanceBetween(planet, this.state.sun) > WORLD_RADIUS) {
+            if (distanceBetween(planet, this.state.sun) > this.arena.worldRadius) {
                 this.destroyPlanet(planet);
             }
         }
@@ -486,9 +592,29 @@ class GameManager {
 
     destroyPlanet(planet) {
         planet.alive = false;
+        this.spawnExplosion(planet.x, planet.y, planet.radius + 10, 0xffffff);
         if (planet.team === "enemy") {
             this.state.enemies = this.state.enemies.filter((enemy) => enemy.id !== planet.id);
         }
+    }
+
+    updateExplosions(dt) {
+        this.state.explosions = this.state.explosions.filter((explosion) => {
+            explosion.ttl -= dt;
+            return explosion.ttl > 0;
+        });
+    }
+
+    spawnExplosion(x, y, radius, color) {
+        this.state.explosions.push({
+            id: uuidv4(),
+            x,
+            y,
+            radius,
+            color,
+            ttl: EXPLOSION_TTL,
+            maxTtl: EXPLOSION_TTL,
+        });
     }
 
     checkRoundEnd() {
@@ -567,15 +693,26 @@ class GameManager {
             color: rock.color,
         }));
 
+        const explosions = this.state.explosions.map((explosion) => ({
+            id: explosion.id,
+            x: explosion.x,
+            y: explosion.y,
+            radius: explosion.radius,
+            color: explosion.color,
+            ttl: explosion.ttl,
+            maxTtl: explosion.maxTtl,
+        }));
+
         return {
             serverTime: Date.now(),
             tickNumber: this.tickNumber,
             status: this.state.status,
-            worldRadius: WORLD_RADIUS,
+            worldRadius: this.arena.worldRadius,
             sun: this.state.sun,
             players,
             enemies,
             rocks,
+            explosions,
         };
     }
 
