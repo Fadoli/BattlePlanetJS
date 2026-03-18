@@ -101,6 +101,7 @@ class Client {
             this.lobby = undefined;
         }
         this.socket.emit("lobbyListJoin");
+        this.getLobbiesForUser();
     }
 
     /**
@@ -158,6 +159,10 @@ class Client {
      */
     sendChat( msg ) {
         this.socket.emit('chat', msg);
+    }
+
+    sendGameState(state) {
+        this.socket.emit("gameState", state);
     }
 
     /**

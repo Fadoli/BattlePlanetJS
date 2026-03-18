@@ -1,11 +1,6 @@
 const { Client } = require('./client');
 const LobbyManager = require('./lobby');
 
-// Mock dependencies
-jest.mock('./lobby', () => ({
-  getPublic: jest.fn()
-}));
-
 describe('Client', () => {
   let mockSocket;
   let client;
@@ -165,7 +160,8 @@ describe('Client', () => {
         { uuid: 'lobby2', name: 'Game2', playerCount: () => 1 }
       ];
       
-      LobbyManager.getPublic.mockReturnValue(mockLobbies);
+      const getPublicSpy = jest.spyOn(LobbyManager, 'getPublic')
+        .mockReturnValue(mockLobbies);
       
       client.getLobbiesForUser();
       
@@ -177,6 +173,8 @@ describe('Client', () => {
           { uuid: 'lobby2', name: 'Game2', count: 1 }
         ]
       });
+
+      getPublicSpy.mockRestore();
     });
 
     it('should notify about new lobby game', () => {

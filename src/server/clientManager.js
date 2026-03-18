@@ -87,9 +87,10 @@ module.exports = {
                         owner: user,
                         name: opts.name,
                         game: opts.game,
+                        isPublic: opts.isPublic,
                     })
                     user.moveToLobby(lobby);
-                    notifyUserInLobbyList((anotherUser) => anotherUser.notifyNewLobby(lobby));
+                    notifyUserInLobbyList((anotherUser) => anotherUser.notifyNewLobbyGame(lobby));
                 } catch (e) {
                     log("FAILED lobbyCreate : " + e)
                 }
@@ -103,11 +104,30 @@ module.exports = {
                 }
             });
 
+            socket.on('disconnect', function () {
+                try {
+                    userLeaveLobby(user);
+                    user.disconnect();
+                } catch (e) {
+                    log("FAILED disconnect : " + e)
+                }
+            });
+
             socket.on('lobbyLeave', function (opts) {
                 userLeaveLobby(user);
             });
             socket.on('lobbyUpdate', function (msg) {
                 log('message: ' + msg);
+            });
+            socket.on('gameInput', function (payload) {
+                try {
+                    if (!user.isInLobby()) {
+                        return;
+                    }
+                    user.lobby.handleGameInput(user, payload);
+                } catch (e) {
+                    log("FAILED gameInput : " + e)
+                }
             });
         });
     }

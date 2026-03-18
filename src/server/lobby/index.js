@@ -26,7 +26,10 @@ module.exports = {
      * @param {LobbyOptions} lobbyOptions
      */
     create(lobbyOptions = {}) {
-        lobbyOptions.OnLobbyEnd = OnLobbyEnd;
+        lobbyOptions.onLobbyEnd = OnLobbyEnd;
+        if (typeof lobbyOptions.isPublic !== "boolean") {
+            lobbyOptions.isPublic = true;
+        }
         const lob = new Lobby(lobbyOptions);
         if (lobbyOptions.isPublic) {
             publicList[lob.uuid] = lob;
