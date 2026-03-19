@@ -15,11 +15,12 @@ const ROCK_RADIUS = 6;
 const ROCK_TTL = 10;
 const ROCK_MASS = 8;
 const SUN_BOUNCE_MULTIPLIER = 1.72;
-const AI_DANGER_RADIUS = 340;
-const AI_SAFE_ORBIT = 920;
-const AI_FAR_RADIUS = 1460;
 const ROUND_RESET_MS = 2500;
-const PLAYER_COLORS = [0x48d1ff, 0x8ef58f, 0xfab1ff, 0xffd166];
+const TEAM_PALETTES = Object.freeze({
+    player: [0x48d1ff, 0x5ce1ff, 0x3ac1ff, 0x7af1ff],
+    enemy: [0xff6b6b, 0xff8585, 0xff5252, 0xff9c9c],
+    neutral: [0x8ef58f, 0xfab1ff, 0xffd166, 0xcfd8dc],
+});
 const BASE_MODIFIER = 1;
 const MAX_MODIFIER = 6;
 const ROCK_HIT_MODIFIER_GAIN = 0.1;
@@ -50,13 +51,6 @@ const ARENA_PRESETS = Object.freeze({
         spawnOrbitRadius: 930,
     },
 });
-const ENEMY_PALETTE = [
-    0xff6b6b,
-    0xffb347,
-    0xff8fab,
-    0x9f86ff,
-    0x87f5c7,
-];
 const AI_PRESETS = Object.freeze({
     easy: {
         thinkIntervalTicks: 8,
@@ -87,12 +81,6 @@ const AI_PRESETS = Object.freeze({
         safetyBias: 0.82,
     },
 });
-const ASTEROID_COLORS = [
-    0x7f8b99,
-    0xa39b8f,
-    0x6f7d8c,
-    0x8d8576,
-];
 
 function normalizeAngle(angle) {
     let value = angle;
@@ -246,6 +234,15 @@ function leadAngle(shooter, target, projectileSpeed) {
     return Math.atan2(dy + (dvy * leadTime), dx + (dvx * leadTime));
 }
 
+function getPlanetColor(team, index, gameMode) {
+    if (gameMode === "ffa" || gameMode === "bots-ffa" && team !== "player") {
+        const ffaColors = [...TEAM_PALETTES.enemy, ...TEAM_PALETTES.neutral];
+        return ffaColors[index % ffaColors.length];
+    }
+    const palette = TEAM_PALETTES[team] || TEAM_PALETTES.neutral;
+    return palette[index % palette.length];
+}
+
 class GameManager {
     constructor(options = {}) {
         this.uuid = uuidv4();
@@ -356,7 +353,7 @@ class GameManager {
                 mass: ASTEROID_MASS + (index % 3) * 24,
                 angle,
                 modifier: 1,
-                color: ASTEROID_COLORS[index % ASTEROID_COLORS.length],
+                color: TEAM_PALETTES.neutral[index % TEAM_PALETTES.neutral.length],
                 isAffectedByGravity: true,
                 alive: true,
             });
@@ -390,7 +387,7 @@ class GameManager {
                 Math.cos(angle) * speed,
                 radius,
                 2 + (index % 2),
-                ENEMY_PALETTE[index % ENEMY_PALETTE.length],
+                getPlanetColor(team, index, this.settings.gameMode),
                 team
             ));
         }
@@ -442,7 +439,7 @@ class GameManager {
             angle,
             health: 5,
             modifier: BASE_MODIFIER,
-            color: PLAYER_COLORS[index % PLAYER_COLORS.length],
+            color: getPlanetColor(team, index, this.settings.gameMode),
             shootCooldown: 0,
             isAffectedByGravity: true,
             alive: true,
@@ -585,10 +582,10 @@ class GameManager {
 
             player.angle = Math.atan2(input.aimY - player.y, input.aimX - player.x);
             if (input.firePulse && player.shootCooldown <= 0) {
-                this.ejectRock(player, player.angle, PLAYER_RECOIL, PLAYER_EJECT_SPEED, ROCK_MASS, 0xcfd8dc);
+                this.ejectRock(player, player.angle, PLAYER_RECOIL, PLAYER_EJECT_SPEED, ROCK_MASS, player.color);
                 player.shootCooldown = PLAYER_CLICK_FIRE_COOLDOWN;
             } else if (input.fireHeld && player.shootCooldown <= 0) {
-                this.ejectRock(player, player.angle, PLAYER_RECOIL, PLAYER_EJECT_SPEED, ROCK_MASS, 0xcfd8dc);
+                this.ejectRock(player, player.angle, PLAYER_RECOIL, PLAYER_EJECT_SPEED, ROCK_MASS, player.color);
                 player.shootCooldown = PLAYER_FIRE_COOLDOWN;
             }
             input.firePulse = false;
@@ -613,6 +610,7 @@ class GameManager {
         if (!target) {
             return;
         }
+
         const aiPreset = AI_PRESETS[this.settings.aiDifficulty] || AI_PRESETS.standard;
         const shouldThink = this.tickNumber % aiPreset.thinkIntervalTicks === 0;
 
@@ -626,7 +624,6 @@ class GameManager {
         const tangentUnitY = radialUnitX;
         const radialVelocity = enemy.vx * radialUnitX + enemy.vy * radialUnitY;
         const tangentialVelocity = enemy.vx * tangentUnitX + enemy.vy * tangentUnitY;
-        const targetAngle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
         const interceptAngle = leadAngle(enemy, target, 7.9);
         const playerDistance = distanceBetween(enemy, target);
         const centerDistance = Math.sqrt((enemy.x * enemy.x) + (enemy.y * enemy.y));
@@ -638,19 +635,24 @@ class GameManager {
         const interceptVectorY = Math.sin(interceptAngle);
         const enemyDriftTowardSun = (enemy.vx * radialUnitX) + (enemy.vy * radialUnitY);
 
+        // Scalable thresholds based on arena size
+        const dangerLimit = this.arena.worldRadius * 0.22;
+        const safeLimit = this.arena.worldRadius * 0.52;
+        const farLimit = this.arena.worldRadius * 0.85;
+
         let desiredVectorX = tangentUnitX;
         let desiredVectorY = tangentUnitY;
 
-        if (sunDistance < AI_DANGER_RADIUS * aiPreset.safetyBias || secondarySunDistance < AI_DANGER_RADIUS * 0.92 * aiPreset.safetyBias) {
+        if (sunDistance < dangerLimit * aiPreset.safetyBias || secondarySunDistance < dangerLimit * 0.92 * aiPreset.safetyBias) {
             desiredVectorX = -radialUnitX * 1.95 + tangentUnitX * 0.42;
             desiredVectorY = -radialUnitY * 1.95 + tangentUnitY * 0.42;
-        } else if (sunDistance < AI_SAFE_ORBIT * aiPreset.safetyBias) {
+        } else if (sunDistance < safeLimit * aiPreset.safetyBias) {
             desiredVectorX = -radialUnitX * 1.12 + tangentUnitX * 0.96;
             desiredVectorY = -radialUnitY * 1.12 + tangentUnitY * 0.96;
         } else if (Math.abs(radialVelocity) > 1.9) {
             desiredVectorX = -radialUnitX * Math.sign(radialVelocity) * 1.35 + tangentUnitX * 0.65;
             desiredVectorY = -radialUnitY * Math.sign(radialVelocity) * 1.35 + tangentUnitY * 0.65;
-        } else if (centerDistance > AI_FAR_RADIUS) {
+        } else if (centerDistance > farLimit) {
             desiredVectorX = (-enemy.x / Math.max(centerDistance, 0.001)) * 1.25 + tangentUnitX * 0.6;
             desiredVectorY = (-enemy.y / Math.max(centerDistance, 0.001)) * 1.25 + tangentUnitY * 0.6;
         }
@@ -669,7 +671,7 @@ class GameManager {
         desiredVectorX += (-radialUnitX * enemyDriftTowardSun) * 0.28;
         desiredVectorY += (-radialUnitY * enemyDriftTowardSun) * 0.28;
 
-        if (playerDistance < 780 && sunDistance > AI_DANGER_RADIUS * 1.1) {
+        if (playerDistance < this.arena.worldRadius * 0.45 && sunDistance > dangerLimit * 1.1) {
             desiredVectorX += interceptVectorX * aiPreset.attackBias;
             desiredVectorY += interceptVectorY * aiPreset.attackBias;
             desiredVectorX += relativeVelocityX * 0.045;
@@ -684,14 +686,14 @@ class GameManager {
         enemy.angle += Math.sign(angleDelta) * Math.min(Math.abs(angleDelta), aiPreset.turnRate * dt * 60);
 
         if (enemy.shootCooldown <= 0) {
-            if (sunDistance < AI_DANGER_RADIUS * aiPreset.safetyBias || secondarySunDistance < AI_DANGER_RADIUS * 0.94 * aiPreset.safetyBias || Math.abs(radialVelocity) > 2.5) {
-                this.ejectRock(enemy, enemy.angle + Math.PI, 0.82, 8.4, 7, 0xe8c39e);
+            if (sunDistance < dangerLimit * aiPreset.safetyBias || secondarySunDistance < dangerLimit * 0.94 * aiPreset.safetyBias || Math.abs(radialVelocity) > 2.5) {
+                this.ejectRock(enemy, enemy.angle + Math.PI, 0.82, 8.4, 7, enemy.color);
                 enemy.shootCooldown = 0.52 * aiPreset.cooldownMultiplier;
-            } else if (centerDistance > AI_FAR_RADIUS) {
-                this.ejectRock(enemy, enemy.angle + Math.PI, 0.75, 7.6, 7, 0xe8c39e);
+            } else if (centerDistance > farLimit) {
+                this.ejectRock(enemy, enemy.angle + Math.PI, 0.75, 7.6, 7, enemy.color);
                 enemy.shootCooldown = 0.68 * aiPreset.cooldownMultiplier;
-            } else if (playerDistance < 720 && shouldThink) {
-                this.ejectRock(enemy, interceptAngle, 0.52, 7.9, 7, 0xe8c39e);
+            } else if (playerDistance < this.arena.worldRadius * 0.42 && shouldThink) {
+                this.ejectRock(enemy, interceptAngle, 0.52, 7.9, 7, enemy.color);
                 enemy.shootCooldown = 0.8 * aiPreset.cooldownMultiplier;
             }
         }
@@ -706,6 +708,8 @@ class GameManager {
             ownerId: owner.id,
             team: owner.team,
             x: owner.x + Math.cos(angle) * ejectDistance,
+            y: owner.y + Math.sin(angle) * ejectDistance,
+
             y: owner.y + Math.sin(angle) * ejectDistance,
             vx: owner.vx + Math.cos(angle) * speed,
             vy: owner.vy + Math.sin(angle) * speed,
