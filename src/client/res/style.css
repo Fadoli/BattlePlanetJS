@@ -167,13 +167,27 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 14px;
     color: var(--text);
+    font: 12px/1.5 "Consolas", "SFMono-Regular", monospace;
     left: 18px;
-    min-width: 260px;
+    max-width: min(440px, calc(100% - 36px));
+    min-width: 320px;
     padding: 14px 16px;
     pointer-events: none;
     position: absolute;
     top: 18px;
     white-space: pre-line;
+    z-index: 2;
+}
+
+.leaderboardOverlay strong {
+    color: var(--accent-strong);
+}
+
+.leaderboardOverlay {
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34);
+    max-height: calc(100% - 36px);
+    overflow: hidden;
+    top: 18px;
 }
 
 .leaderboardOverlay[hidden] {
