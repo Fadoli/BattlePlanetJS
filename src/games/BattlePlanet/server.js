@@ -17,9 +17,21 @@ const ROCK_MASS = 8;
 const SUN_BOUNCE_MULTIPLIER = 1.72;
 const ROUND_RESET_MS = 2500;
 const TEAM_PALETTES = Object.freeze({
-    player: [0x48d1ff, 0x5ce1ff, 0x3ac1ff, 0x7af1ff],
-    enemy: [0xff6b6b, 0xff8585, 0xff5252, 0xff9c9c],
-    neutral: [0x8ef58f, 0xfab1ff, 0xffd166, 0xcfd8dc],
+    player: [
+        0x48d1ff, 0x5ce1ff, 0x3ac1ff, 0x7af1ff, 
+        0x00d2ff, 0x3a7bd5, 0x1cb5e0, 0x000046
+    ],
+    enemy: [
+        0xff6b6b, 0xee0979, 0xff4b2b, 0xd4145a, // Reds/Pinks
+        0x9f86ff, 0x8e44ad, 0xbb33ff, 0x663399, // Purples/Violets
+        0xffb347, 0xf39c12, 0xff8c00, 0xd35400, // Oranges
+        0xe67e22, 0xe74c3c, 0xc0392b, 0x96281b  // Deep Warm tones
+    ],
+    neutral: [
+        0x8ef58f, 0xfab1ff, 0xffd166, 0xcfd8dc,
+        0xa8ff78, 0xfbd3e9, 0xfeb47b, 0xff7e5f,
+        0x76b852, 0x8e44ad, 0x16a085, 0x2c3e50
+    ],
 });
 const BASE_MODIFIER = 1;
 const MAX_MODIFIER = 6;
@@ -235,8 +247,13 @@ function leadAngle(shooter, target, projectileSpeed) {
 }
 
 function getPlanetColor(team, index, gameMode) {
-    if (gameMode === "ffa" || gameMode === "bots-ffa" && team !== "player") {
-        const ffaColors = [...TEAM_PALETTES.enemy, ...TEAM_PALETTES.neutral];
+    if (gameMode === "ffa" || (gameMode === "bots-ffa" && team !== "player")) {
+        // Create a massive combined pool for maximum variety in FFA
+        const ffaColors = [
+            ...TEAM_PALETTES.enemy, 
+            ...TEAM_PALETTES.neutral, 
+            ...TEAM_PALETTES.player.slice(4) // Use some of the darker/unique player blues too
+        ];
         return ffaColors[index % ffaColors.length];
     }
     const palette = TEAM_PALETTES[team] || TEAM_PALETTES.neutral;
