@@ -72,7 +72,18 @@
         <div id="gameHeader" class="gameHudBar">
           <div class="gameTitleRow">
             <h1>BattlePlanet</h1>
-            <button id="fullscreenToggle" type="button">Fullscreen</button>
+            <div class="gameActionRow">
+              <label class="hudSelectField" for="frameCapSelect">
+                <span>Frame Cap</span>
+                <select id="frameCapSelect">
+                  <option value="30">30</option>
+                  <option value="60" selected>60</option>
+                  <option value="90">90</option>
+                  <option value="120">120</option>
+                </select>
+              </label>
+              <button id="fullscreenToggle" type="button">Fullscreen</button>
+            </div>
           </div>
         </div>
         <div id="gameRender"></div>

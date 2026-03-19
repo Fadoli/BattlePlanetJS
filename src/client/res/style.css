@@ -157,6 +157,38 @@ body {
     margin-bottom: 6px;
 }
 
+.gameActionRow {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+}
+
+.hudSelectField {
+    align-items: center;
+    color: var(--text-soft);
+    display: inline-flex;
+    gap: 10px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.hudSelectField select {
+    appearance: none;
+    background: rgba(17, 39, 59, 0.94);
+    border: 1px solid rgba(103, 218, 249, 0.18);
+    border-radius: 10px;
+    color: var(--text);
+    font: 700 13px/1 "Trebuchet MS", "Segoe UI", sans-serif;
+    min-width: 78px;
+    padding: 10px 12px;
+}
+
+.hudSelectField select:focus {
+    border-color: rgba(103, 218, 249, 0.42);
+    outline: none;
+}
+
 #fullscreenToggle {
     min-width: 128px;
     padding: 10px 14px;
