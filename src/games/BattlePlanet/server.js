@@ -67,22 +67,22 @@ const AI_PRESETS = Object.freeze({
     standard: {
         thinkIntervalTicks: 5,
         turnRate: 0.04,
-        cooldownMultiplier: 1,
+        cooldownMultiplier: 0.9,
         attackBias: 0.45,
         safetyBias: 1,
     },
     hard: {
         thinkIntervalTicks: 3,
-        turnRate: 0.055,
-        cooldownMultiplier: 0.78,
-        attackBias: 0.62,
+        turnRate: 0.058,
+        cooldownMultiplier: 0.6,
+        attackBias: 0.65,
         safetyBias: 0.9,
     },
     ace: {
         thinkIntervalTicks: 1,
-        turnRate: 0.075,
-        cooldownMultiplier: 0.62,
-        attackBias: 0.82,
+        turnRate: 0.085,
+        cooldownMultiplier: 0.4,
+        attackBias: 0.9,
         safetyBias: 0.82,
     },
 });
@@ -618,11 +618,11 @@ class GameManager {
             desiredVectorX = -radialUnitX * 1.12 + tangentUnitX * 0.96;
             desiredVectorY = -radialUnitY * 1.12 + tangentUnitY * 0.96;
         } else if (Math.abs(radialVelocity) > 1.9) {
-            desiredVectorX = -radialUnitX * Math.sign(radialVelocity) * 1.2 + tangentUnitX;
-            desiredVectorY = -radialUnitY * Math.sign(radialVelocity) * 1.2 + tangentUnitY;
+            desiredVectorX = -radialUnitX * Math.sign(radialVelocity) * 1.35 + tangentUnitX * 0.65;
+            desiredVectorY = -radialUnitY * Math.sign(radialVelocity) * 1.35 + tangentUnitY * 0.65;
         } else if (centerDistance > AI_FAR_RADIUS) {
-            desiredVectorX = (-enemy.x / Math.max(centerDistance, 0.001)) * 0.95 + tangentUnitX * 0.75;
-            desiredVectorY = (-enemy.y / Math.max(centerDistance, 0.001)) * 0.95 + tangentUnitY * 0.75;
+            desiredVectorX = (-enemy.x / Math.max(centerDistance, 0.001)) * 1.25 + tangentUnitX * 0.6;
+            desiredVectorY = (-enemy.y / Math.max(centerDistance, 0.001)) * 1.25 + tangentUnitY * 0.6;
         }
 
         if (Math.abs(tangentialVelocity) < 2.2) {
@@ -630,8 +630,14 @@ class GameManager {
             desiredVectorY += tangentUnitY * 0.7;
         }
 
-        desiredVectorX += (-radialUnitX * enemyDriftTowardSun) * 0.18;
-        desiredVectorY += (-radialUnitY * enemyDriftTowardSun) * 0.18;
+        const totalSpeed = Math.sqrt(enemy.vx * enemy.vx + enemy.vy * enemy.vy);
+        if (totalSpeed > 6.2) {
+            desiredVectorX -= enemy.vx * 0.15;
+            desiredVectorY -= enemy.vy * 0.15;
+        }
+
+        desiredVectorX += (-radialUnitX * enemyDriftTowardSun) * 0.28;
+        desiredVectorY += (-radialUnitY * enemyDriftTowardSun) * 0.28;
 
         if (playerDistance < 780 && sunDistance > AI_DANGER_RADIUS * 1.1) {
             desiredVectorX += interceptVectorX * aiPreset.attackBias;
@@ -649,14 +655,14 @@ class GameManager {
 
         if (enemy.shootCooldown <= 0) {
             if (sunDistance < AI_DANGER_RADIUS * aiPreset.safetyBias || secondarySunDistance < AI_DANGER_RADIUS * 0.94 * aiPreset.safetyBias || Math.abs(radialVelocity) > 2.5) {
-                this.ejectRock(enemy, enemy.angle + Math.PI, 0.72, 8.4, 7, 0xe8c39e);
-                enemy.shootCooldown = 0.55 * aiPreset.cooldownMultiplier;
+                this.ejectRock(enemy, enemy.angle + Math.PI, 0.82, 8.4, 7, 0xe8c39e);
+                enemy.shootCooldown = 0.52 * aiPreset.cooldownMultiplier;
             } else if (centerDistance > AI_FAR_RADIUS) {
-                this.ejectRock(enemy, enemy.angle + Math.PI, 0.62, 7.6, 7, 0xe8c39e);
-                enemy.shootCooldown = 0.75 * aiPreset.cooldownMultiplier;
+                this.ejectRock(enemy, enemy.angle + Math.PI, 0.75, 7.6, 7, 0xe8c39e);
+                enemy.shootCooldown = 0.68 * aiPreset.cooldownMultiplier;
             } else if (playerDistance < 720 && shouldThink) {
                 this.ejectRock(enemy, interceptAngle, 0.52, 7.9, 7, 0xe8c39e);
-                enemy.shootCooldown = 0.95 * aiPreset.cooldownMultiplier;
+                enemy.shootCooldown = 0.8 * aiPreset.cooldownMultiplier;
             }
         }
     }
