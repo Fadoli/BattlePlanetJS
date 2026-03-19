@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     starMode: "single",
     hazards: "none",
     aiDifficulty: "standard",
+    gameMode: "team-vs-bots",
 });
 const ARENA_PRESETS = Object.freeze({
     compact: {
@@ -268,6 +269,7 @@ class GameManager {
         const starMode = settings.starMode === "binary" ? "binary" : DEFAULT_SETTINGS.starMode;
         const hazards = settings.hazards === "asteroids" ? "asteroids" : DEFAULT_SETTINGS.hazards;
         const aiDifficulty = AI_PRESETS[settings.aiDifficulty] ? settings.aiDifficulty : DEFAULT_SETTINGS.aiDifficulty;
+        const gameMode = ["team-vs-bots", "ffa", "bots-ffa"].includes(settings.gameMode) ? settings.gameMode : DEFAULT_SETTINGS.gameMode;
 
         return {
             botCount,
@@ -275,6 +277,7 @@ class GameManager {
             starMode,
             hazards,
             aiDifficulty,
+            gameMode,
         };
     }
 
@@ -371,26 +374,35 @@ class GameManager {
             const angle = ((Math.PI * 2) / Math.max(1, count)) * index;
             const speed = 2.8 + (index % 3) * 0.32;
             const radius = 16 + (index % 3) * 2;
+            const id = `bot-${index + 1}`;
+            let team = "enemy";
+            if (this.settings.gameMode === "bots-ffa") {
+                team = id;
+            } else if (this.settings.gameMode === "ffa") {
+                team = id;
+            }
+
             enemies.push(this.createEnemy(
-                `bot-${index + 1}`,
+                id,
                 Math.cos(angle) * orbitRadius,
                 Math.sin(angle) * orbitRadius,
                 -Math.sin(angle) * speed,
                 Math.cos(angle) * speed,
                 radius,
                 2 + (index % 2),
-                ENEMY_PALETTE[index % ENEMY_PALETTE.length]
+                ENEMY_PALETTE[index % ENEMY_PALETTE.length],
+                team
             ));
         }
 
         return enemies;
     }
 
-    createEnemy(id, x, y, vx, vy, radius, health, color) {
+    createEnemy(id, x, y, vx, vy, radius, health, color, team) {
         return {
             id,
             name: id,
-            team: "enemy",
+            team: team || "enemy",
             x,
             y,
             vx,
@@ -412,10 +424,15 @@ class GameManager {
         const angle = ((Math.PI * 2) / Math.max(1, index + 1)) * index - Math.PI / 2;
         const orbitRadius = this.arena.spawnOrbitRadius + (index % 2) * 120;
         const orbitalSpeed = 3.7 - (index % 2) * 0.25;
+        let team = "player";
+        if (this.settings.gameMode === "ffa") {
+            team = token;
+        }
+
         return {
             id: token,
             name: this.players[token] ? this.players[token].name : token,
-            team: "player",
+            team,
             x: Math.cos(angle) * orbitRadius,
             y: Math.sin(angle) * orbitRadius,
             vx: -Math.sin(angle) * orbitalSpeed,
@@ -522,7 +539,7 @@ class GameManager {
 
         this.applyPlayerInputs(players);
         for (const enemy of enemies) {
-            this.updateEnemy(enemy, dt, players);
+            this.updateEnemy(enemy, dt, planets);
         }
 
         for (const body of collisionBodies) {
@@ -578,8 +595,21 @@ class GameManager {
         }
     }
 
-    updateEnemy(enemy, dt, players) {
-        const target = players[0];
+    updateEnemy(enemy, dt, planets) {
+        let target = null;
+        let minTargetDistance = Number.POSITIVE_INFINITY;
+
+        for (const other of planets) {
+            if (!other.alive || other.team === enemy.team || other.id === enemy.id) {
+                continue;
+            }
+            const dist = distanceBetween(enemy, other);
+            if (dist < minTargetDistance) {
+                minTargetDistance = dist;
+                target = other;
+            }
+        }
+
         if (!target) {
             return;
         }
@@ -739,7 +769,7 @@ class GameManager {
 
         for (const rock of this.state.rocks) {
             for (const planet of planets) {
-                if (!planet.alive || rock.ownerId === planet.id) {
+                if (!planet.alive || rock.ownerId === planet.id || (rock.team === planet.team && rock.team !== undefined)) {
                     continue;
                 }
 
@@ -852,11 +882,25 @@ class GameManager {
     }
 
     checkRoundEnd() {
-        const alivePlayers = this.getAlivePlayers();
-        if (alivePlayers.length === 0) {
-            this.state.status = "lost";
-        } else if (this.state.enemies.length === 0) {
-            this.state.status = "won";
+        if (this.state.status !== "playing") {
+            return;
+        }
+
+        const alivePlanets = [...this.getAlivePlayers(), ...this.state.enemies.filter((e) => e.alive)];
+        const teamsRemaining = new Set(alivePlanets.map((p) => p.team));
+
+        if (teamsRemaining.size <= 1) {
+            const playerToken = Object.keys(this.players)[0];
+            const playerBody = playerToken ? this.state[playerToken] : null;
+
+            if (playerBody && playerBody.alive) {
+                this.state.status = "won";
+            } else if (teamsRemaining.size === 0) {
+                this.state.status = "lost";
+            } else {
+                // Bots won or a different team won
+                this.state.status = "lost";
+            }
         }
 
         if (this.state.status !== "playing" && !this.resetTimeout) {

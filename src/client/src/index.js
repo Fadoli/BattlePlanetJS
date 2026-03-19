@@ -80,6 +80,11 @@ const LOBBY_AI_LABELS = {
     hard: "Hard AI",
     ace: "Ace AI",
 };
+const LOBBY_MODE_LABELS = {
+    "team-vs-bots": "Team vs Bots",
+    "ffa": "Free-for-all",
+    "bots-ffa": "Bots FFA",
+};
 
 function isTypingTarget(target) {
     if (!target) {
@@ -171,6 +176,7 @@ function createLobbyListing(game) {
     const starLabel = LOBBY_STAR_LABELS[settings.starMode] || "Single sun";
     const hazardLabel = LOBBY_HAZARD_LABELS[settings.hazards] || "Clear orbit";
     const aiLabel = LOBBY_AI_LABELS[settings.aiDifficulty] || "Standard AI";
+    const modeLabel = LOBBY_MODE_LABELS[settings.gameMode] || "Team vs Bots";
     const botCount = Number.isFinite(settings.botCount) ? settings.botCount : 2;
     const visibilityLabel = settings.isPublic === false ? "Private match" : "Public lobby";
     const accessLabel = settings.isPublic === false ? "Invite only" : "Open join";
@@ -186,6 +192,7 @@ function createLobbyListing(game) {
         </div>
         <div class="lobbyTagRow">
             <span class="lobbyTag">${arenaLabel} arena</span>
+            <span class="lobbyTag">${modeLabel}</span>
             <span class="lobbyTag">${starLabel}</span>
             <span class="lobbyTag">${hazardLabel}</span>
             <span class="lobbyTag">${aiLabel}</span>
@@ -214,6 +221,7 @@ function getLobbySettings() {
         starMode: $("#lobbyStarMode").val() || "single",
         hazards: $("#lobbyHazards").val() || "none",
         aiDifficulty: $("#lobbyAiDifficulty").val() || "standard",
+        gameMode: $("#lobbyGameMode").val() || "team-vs-bots",
         isPublic: $("#lobbyPublicInput").is(":checked"),
     };
 }
