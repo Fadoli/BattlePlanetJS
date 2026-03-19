@@ -1,10 +1,14 @@
 const { uuidv4 } = require("../../utils");
 
-const TICKS_PER_SECOND = 30;
+const TICKS_PER_SECOND = 20;
 const TICK_RATE = 1000 / TICKS_PER_SECOND;
 const WORLD_RADIUS = 1750;
 const SUN_RADIUS = 110;
 const SUN_MASS = 5200;
+const BINARY_SUN_OFFSET = 360;
+const BINARY_SUN_ANGULAR_SPEED = 0.22;
+const ASTEROID_RADIUS = 12;
+const ASTEROID_MASS = 180;
 const PLAYER_EJECT_SPEED = 9.5;
 const PLAYER_RECOIL = 0.72;
 const ROCK_RADIUS = 6;
@@ -27,6 +31,8 @@ const EXPLOSION_TTL = 0.35;
 const DEFAULT_SETTINGS = Object.freeze({
     botCount: 2,
     arenaSize: "standard",
+    starMode: "single",
+    hazards: "none",
 });
 const ARENA_PRESETS = Object.freeze({
     compact: {
@@ -49,6 +55,12 @@ const ENEMY_PALETTE = [
     0x9f86ff,
     0x87f5c7,
 ];
+const ASTEROID_COLORS = [
+    0x7f8b99,
+    0xa39b8f,
+    0x6f7d8c,
+    0x8d8576,
+];
 
 function normalizeAngle(angle) {
     let value = angle;
@@ -67,19 +79,19 @@ function distanceBetween(a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-function applyGravity(body, sun, dt) {
+function applyGravity(body, suns, dt) {
     if (!body.isAffectedByGravity) {
         return;
     }
-
-    const dx = sun.x - body.x;
-    const dy = sun.y - body.y;
-    const distanceSquared = Math.max(dx * dx + dy * dy, 2500);
-    const distance = Math.sqrt(distanceSquared);
-    const acceleration = (sun.mass / distanceSquared) * (body.modifier || BASE_MODIFIER);
-
-    body.vx += ((dx / distance) * acceleration) * dt * 60;
-    body.vy += ((dy / distance) * acceleration) * dt * 60;
+    for (const sun of suns) {
+        const dx = sun.x - body.x;
+        const dy = sun.y - body.y;
+        const distanceSquared = Math.max(dx * dx + dy * dy, 2500);
+        const distance = Math.sqrt(distanceSquared);
+        const acceleration = (sun.mass / distanceSquared) * (body.modifier || BASE_MODIFIER);
+        body.vx += ((dx / distance) * acceleration) * dt * 60;
+        body.vy += ((dy / distance) * acceleration) * dt * 60;
+    }
 }
 
 function moveBody(body, dt) {
@@ -152,6 +164,21 @@ function increaseModifier(body, amount) {
     body.modifier = Math.min(MAX_MODIFIER, (body.modifier || BASE_MODIFIER) + amount);
 }
 
+function orbitalVelocity(aroundBody, x, y, speed) {
+    const angle = Math.atan2(y - aroundBody.y, x - aroundBody.x);
+    return {
+        vx: -Math.sin(angle) * speed,
+        vy: Math.cos(angle) * speed,
+    };
+}
+
+function binarySunPosition(angle, distance) {
+    return {
+        x: Math.cos(angle) * distance,
+        y: Math.sin(angle) * distance,
+    };
+}
+
 class GameManager {
     constructor(options = {}) {
         this.uuid = uuidv4();
@@ -172,26 +199,99 @@ class GameManager {
         const botCount = Number.isFinite(parsedBotCount)
             ? Math.max(0, Math.min(5, parsedBotCount))
             : DEFAULT_SETTINGS.botCount;
+        const starMode = settings.starMode === "binary" ? "binary" : DEFAULT_SETTINGS.starMode;
+        const hazards = settings.hazards === "asteroids" ? "asteroids" : DEFAULT_SETTINGS.hazards;
 
         return {
             botCount,
             arenaSize,
+            starMode,
+            hazards,
         };
     }
 
     createRoundState() {
+        const suns = this.createSuns();
         return {
             status: "playing",
-            sun: {
-                x: 0,
-                y: 0,
-                radius: SUN_RADIUS,
-                mass: SUN_MASS,
-            },
+            sun: suns[0],
+            suns,
+            sunOrbitAngle: 0,
             rocks: [],
             explosions: [],
+            asteroids: this.createAsteroids(suns),
             enemies: this.createEnemies(),
         };
+    }
+
+    createSuns() {
+        if (this.settings.starMode === "binary") {
+            const first = binarySunPosition(0, BINARY_SUN_OFFSET);
+            const second = binarySunPosition(Math.PI, BINARY_SUN_OFFSET);
+            return [
+                {
+                    id: "sun-a",
+                    x: first.x,
+                    y: first.y,
+                    radius: SUN_RADIUS * 0.92,
+                    mass: SUN_MASS * 0.78,
+                    color: 0xffd166,
+                },
+                {
+                    id: "sun-b",
+                    x: second.x,
+                    y: second.y,
+                    radius: SUN_RADIUS * 0.88,
+                    mass: SUN_MASS * 0.74,
+                    color: 0xffb347,
+                },
+            ];
+        }
+
+        return [{
+            id: "sun-a",
+            x: 0,
+            y: 0,
+            radius: SUN_RADIUS,
+            mass: SUN_MASS,
+            color: 0xffd166,
+        }];
+    }
+
+    createAsteroids(suns) {
+        if (this.settings.hazards !== "asteroids") {
+            return [];
+        }
+
+        const asteroids = [];
+        const count = this.settings.starMode === "binary" ? 12 : 8;
+
+        for (let index = 0; index < count; index += 1) {
+            const anchorSun = suns[index % suns.length];
+            const ringRadius = anchorSun.radius + 260 + (index % 4) * 54 + (this.settings.starMode === "binary" ? 20 : 0);
+            const angle = ((Math.PI * 2) / count) * index + (index % 2) * 0.3;
+            const x = anchorSun.x + Math.cos(angle) * ringRadius;
+            const y = anchorSun.y + Math.sin(angle) * ringRadius;
+            const orbit = orbitalVelocity(anchorSun, x, y, 2.2 + (index % 3) * 0.22);
+
+            asteroids.push({
+                id: `asteroid-${index + 1}`,
+                team: "hazard",
+                x,
+                y,
+                vx: orbit.vx,
+                vy: orbit.vy,
+                radius: ASTEROID_RADIUS + (index % 3) * 2,
+                mass: ASTEROID_MASS + (index % 3) * 24,
+                angle,
+                modifier: 1,
+                color: ASTEROID_COLORS[index % ASTEROID_COLORS.length],
+                isAffectedByGravity: true,
+                alive: true,
+            });
+        }
+
+        return asteroids;
     }
 
     createEnemies() {
@@ -334,7 +434,9 @@ class GameManager {
         const dt = 1 / TICKS_PER_SECOND;
         const players = this.getAlivePlayers();
         const enemies = this.state.enemies.filter((enemy) => enemy.alive);
+        const asteroids = this.state.asteroids.filter((asteroid) => asteroid.alive !== false);
         const planets = [...players, ...enemies];
+        const collisionBodies = [...planets, ...asteroids];
 
         this.updateExplosions(dt);
 
@@ -342,6 +444,8 @@ class GameManager {
             this.broadcastState();
             return;
         }
+
+        this.updateSuns(dt);
 
         for (const planet of planets) {
             planet.shootCooldown = Math.max(0, planet.shootCooldown - dt);
@@ -352,22 +456,38 @@ class GameManager {
             this.updateEnemy(enemy, dt, players);
         }
 
-        for (const planet of planets) {
-            applyGravity(planet, this.state.sun, dt);
-            moveBody(planet, dt);
+        for (const body of collisionBodies) {
+            applyGravity(body, this.state.suns, dt);
+            moveBody(body, dt);
         }
 
-        for (let index = 0; index < planets.length; index += 1) {
-            for (let secondIndex = index + 1; secondIndex < planets.length; secondIndex += 1) {
-                resolvePlanetCollision(planets[index], planets[secondIndex]);
+        for (let index = 0; index < collisionBodies.length; index += 1) {
+            for (let secondIndex = index + 1; secondIndex < collisionBodies.length; secondIndex += 1) {
+                resolvePlanetCollision(collisionBodies[index], collisionBodies[secondIndex]);
             }
         }
 
-        this.updateRocks(dt, planets);
-        this.handleSunCollisions(planets);
+        this.updateRocks(dt, collisionBodies);
+        this.handleSunCollisions(collisionBodies);
         this.handleArenaBounds(planets);
         this.checkRoundEnd();
         this.broadcastState();
+    }
+
+    updateSuns(dt) {
+        if (this.settings.starMode !== "binary" || this.state.suns.length < 2) {
+            return;
+        }
+
+        this.state.sunOrbitAngle = (this.state.sunOrbitAngle || 0) + (BINARY_SUN_ANGULAR_SPEED * dt);
+        const first = binarySunPosition(this.state.sunOrbitAngle, BINARY_SUN_OFFSET);
+        const second = binarySunPosition(this.state.sunOrbitAngle + Math.PI, BINARY_SUN_OFFSET);
+
+        this.state.suns[0].x = first.x;
+        this.state.suns[0].y = first.y;
+        this.state.suns[1].x = second.x;
+        this.state.suns[1].y = second.y;
+        this.state.sun = this.state.suns[0];
     }
 
     applyPlayerInputs(players) {
@@ -395,8 +515,9 @@ class GameManager {
             return;
         }
 
-        const toSunX = this.state.sun.x - enemy.x;
-        const toSunY = this.state.sun.y - enemy.y;
+        const anchorSun = this.nearestSun(enemy);
+        const toSunX = anchorSun.x - enemy.x;
+        const toSunY = anchorSun.y - enemy.y;
         const sunDistance = Math.sqrt(toSunX * toSunX + toSunY * toSunY);
         const radialUnitX = toSunX / Math.max(sunDistance, 0.001);
         const radialUnitY = toSunY / Math.max(sunDistance, 0.001);
@@ -475,6 +596,22 @@ class GameManager {
         owner.vy -= Math.sin(angle) * recoil * instability;
     }
 
+    nearestSun(body) {
+        let closestSun = this.state.suns[0];
+        let closestDistance = distanceBetween(body, closestSun);
+
+        for (let index = 1; index < this.state.suns.length; index += 1) {
+            const sun = this.state.suns[index];
+            const distance = distanceBetween(body, sun);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestSun = sun;
+            }
+        }
+
+        return closestSun;
+    }
+
     updateRocks(dt, planets) {
         this.state.rocks = this.state.rocks.filter((rock) => {
             rock.ttl -= dt;
@@ -482,7 +619,7 @@ class GameManager {
                 return false;
             }
 
-            applyGravity(rock, this.state.sun, dt);
+            applyGravity(rock, this.state.suns, dt);
             moveBody(rock, dt);
             return true;
         });
@@ -531,14 +668,17 @@ class GameManager {
             if (!planet.alive) {
                 continue;
             }
-            if (distanceBetween(planet, this.state.sun) < planet.radius + this.state.sun.radius) {
-                this.bounceOffSun(planet);
+            for (const sun of this.state.suns) {
+                if (distanceBetween(planet, sun) < planet.radius + sun.radius) {
+                    this.bounceOffSun(planet, sun);
+                    break;
+                }
             }
         }
 
         this.state.rocks = this.state.rocks.filter(
             (rock) => {
-                const collides = distanceBetween(rock, this.state.sun) < rock.radius + this.state.sun.radius;
+                const collides = this.state.suns.some((sun) => distanceBetween(rock, sun) < rock.radius + sun.radius);
                 if (collides) {
                     this.spawnExplosion(rock.x, rock.y, 18, 0xffd166);
                 }
@@ -547,13 +687,13 @@ class GameManager {
         );
     }
 
-    bounceOffSun(planet) {
-        const dx = planet.x - this.state.sun.x;
-        const dy = planet.y - this.state.sun.y;
+    bounceOffSun(planet, sun) {
+        const dx = planet.x - sun.x;
+        const dy = planet.y - sun.y;
         const distance = Math.sqrt(dx * dx + dy * dy) || 0.0001;
         const normalX = dx / distance;
         const normalY = dy / distance;
-        const minDistance = planet.radius + this.state.sun.radius;
+        const minDistance = planet.radius + sun.radius;
         const overlap = minDistance - distance;
         const incomingSpeed = planet.vx * normalX + planet.vy * normalY;
 
@@ -584,7 +724,7 @@ class GameManager {
             if (!planet.alive) {
                 continue;
             }
-            if (distanceBetween(planet, this.state.sun) > this.arena.worldRadius) {
+            if (Math.sqrt((planet.x * planet.x) + (planet.y * planet.y)) > this.arena.worldRadius) {
                 this.destroyPlanet(planet);
             }
         }
@@ -703,16 +843,38 @@ class GameManager {
             maxTtl: explosion.maxTtl,
         }));
 
+        const asteroids = this.state.asteroids.map((asteroid) => ({
+            id: asteroid.id,
+            team: asteroid.team,
+            x: asteroid.x,
+            y: asteroid.y,
+            vx: asteroid.vx,
+            vy: asteroid.vy,
+            radius: asteroid.radius,
+            angle: asteroid.angle,
+            color: asteroid.color,
+            alive: asteroid.alive,
+        }));
+
         return {
             serverTime: Date.now(),
             tickNumber: this.tickNumber,
             status: this.state.status,
             worldRadius: this.arena.worldRadius,
-            sun: this.state.sun,
+            sun: this.state.suns[0],
+            suns: this.state.suns.map((sun) => ({
+                id: sun.id,
+                x: sun.x,
+                y: sun.y,
+                radius: sun.radius,
+                mass: sun.mass,
+                color: sun.color,
+            })),
             players,
             enemies,
             rocks,
             explosions,
+            asteroids,
         };
     }
 

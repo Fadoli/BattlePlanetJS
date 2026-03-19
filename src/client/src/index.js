@@ -66,6 +66,14 @@ const LOBBY_ARENA_LABELS = {
     standard: "Standard",
     wide: "Wide",
 };
+const LOBBY_STAR_LABELS = {
+    single: "Single sun",
+    binary: "Binary suns",
+};
+const LOBBY_HAZARD_LABELS = {
+    none: "Clear orbit",
+    asteroids: "Asteroids",
+};
 
 function isTypingTarget(target) {
     if (!target) {
@@ -154,6 +162,8 @@ function renderLobbyList(request) {
 function createLobbyListing(game) {
     const settings = game.settings || {};
     const arenaLabel = LOBBY_ARENA_LABELS[settings.arenaSize] || "Standard";
+    const starLabel = LOBBY_STAR_LABELS[settings.starMode] || "Single sun";
+    const hazardLabel = LOBBY_HAZARD_LABELS[settings.hazards] || "Clear orbit";
     const botCount = Number.isFinite(settings.botCount) ? settings.botCount : 2;
     const visibilityLabel = settings.isPublic === false ? "Private match" : "Public lobby";
     const accessLabel = settings.isPublic === false ? "Invite only" : "Open join";
@@ -169,6 +179,8 @@ function createLobbyListing(game) {
         </div>
         <div class="lobbyTagRow">
             <span class="lobbyTag">${arenaLabel} arena</span>
+            <span class="lobbyTag">${starLabel}</span>
+            <span class="lobbyTag">${hazardLabel}</span>
             <span class="lobbyTag">${botCount} bots</span>
             <span class="lobbyTag">${accessLabel}</span>
         </div>
@@ -191,6 +203,8 @@ function getLobbySettings() {
     return {
         botCount: Number.parseInt($("#lobbyBotCount").val(), 10) || 2,
         arenaSize: $("#lobbyArenaSize").val() || "standard",
+        starMode: $("#lobbyStarMode").val() || "single",
+        hazards: $("#lobbyHazards").val() || "none",
         isPublic: $("#lobbyPublicInput").is(":checked"),
     };
 }
