@@ -34,7 +34,6 @@
     "@rollup/plugin-node-resolve": "^16.0.1",
     "express": "^4.21.2",
     "nock": "^14.0.1",
-    "pixi.js": "^8.9.0",
     "rollup": "^4.37.0",
     "rollup-plugin-copy": "^3.5.0",
     "rollup-plugin-progress": "^1.1.2"
