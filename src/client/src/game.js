@@ -1,4 +1,5 @@
-(function initBattlePlanetClient(globalScope) {
+import * as THREE from 'three';
+
 const DEFAULT_SIZE={width:1024,height:700};
 const RESIZE_THROTTLE_MS=100;
 const CAMERA_LERP=0.12;
@@ -23,15 +24,50 @@ const leaderboardElement=document.createElement("div");
 leaderboardElement.className="leaderboardOverlay";
 leaderboardElement.hidden=true;
 hostElement.appendChild(leaderboardElement);
-const canvas=document.createElement("canvas");
+
+// Three.js Initialization
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+const canvas = renderer.domElement;
 hostElement.appendChild(canvas);
-const ctx=canvas.getContext("2d",{alpha:false,desynchronized:true});
+const scene = new THREE.Scene();
+const camera3d = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+camera3d.position.z = 10;
+
+// Set a clear color to match the space background
+renderer.setClearColor(0x06111d, 1);
+
+// UI Canvas for labels and guides
+const uiCanvas = document.createElement("canvas");
+uiCanvas.style.position = "absolute";
+uiCanvas.style.top = "0";
+uiCanvas.style.left = "0";
+uiCanvas.style.pointerEvents = "none";
+hostElement.appendChild(uiCanvas);
+const uiCtx = uiCanvas.getContext("2d");
+
 const audioState={context:null,masterGain:null,playedExplosions:new Set()};
-const cache={dpr:1,backgroundLayers:[],arena:null,sun:null,arenaKey:"",sunKey:"",backgroundKey:"",planetSprites:new Map()};
+const cache={
+    dpr:1,
+    backgroundLayers:[],
+    arena:null,
+    sun:null,
+    arenaKey:"",
+    sunKey:"",
+    backgroundKey:"",
+    planetSprites:new Map(),
+    threeObjects: new Map(),
+    // Shared geometries for performance
+    geometries: {
+        circle16: new THREE.CircleGeometry(1, 16),
+        circle8: new THREE.CircleGeometry(1, 8),
+        plane: new THREE.PlaneGeometry(1, 1),
+        ring: new THREE.RingGeometry(0.8, 1, 32)
+    }
+};
 const perfState={frameCount:0,lastUpdatedAt:0,sampleStartedAt:0,totals:{frame:0,background:0,arena:0,entities:0,effects:0,ui:0},snapshot:null};
 let viewport={width:DEFAULT_SIZE.width,height:DEFAULT_SIZE.height,centerX:DEFAULT_SIZE.width/2,centerY:DEFAULT_SIZE.height/2};
 let resizeTimestamp=0,zoom=DEFAULT_ZOOM,inputSender=()=>{},camera={x:0,y:0},pointerState={x:viewport.centerX,y:viewport.centerY,down:false},showLeaderboard=false,isRunning=false,animationFrame=null,snapshotBuffer=[],serverOffsetEstimate=null,lastUiTextUpdateAt=0,lastControlsText="",lastLeaderboardText="",lastRenderAt=0,networkState=emptyState(),hasInitialCamera=false,roundHistory=new Map(),resolvedRoundStatus=null,frameCap=loadFrameCap(),localPlayerVisual=null;
-buildBackgroundLayers();buildArena();buildSun();attachInputListeners();syncFrameCapControl();resizeBackingStore();render();
+
 function emptyState(){return{status:"waiting",serverTime:0,tickNumber:0,worldRadius:1750,sun:{x:0,y:0,radius:110,color:0xffd166},suns:[{id:"sun-a",x:0,y:0,radius:110,color:0xffd166}],players:[],enemies:[],rocks:[],asteroids:[],explosions:[],playerId:undefined};}
 function targetFrameMs(){return 1000/frameCap;}
 function loadFrameCap(){const stored=Number.parseInt(window.localStorage.getItem("battlePlanet.frameCap")||`${DEFAULT_FRAME_CAP}`,10);return FRAME_CAP_OPTIONS.includes(stored)?stored:DEFAULT_FRAME_CAP;}
@@ -42,12 +78,116 @@ function rgba(color,a){const r=(color>>16)&255,g=(color>>8)&255,b=color&255;retu
 function fillCircle(target,x,y,r,fill){target.beginPath();target.fillStyle=fill;target.arc(x,y,r,0,Math.PI*2);target.fill();}
 function strokeCircle(target,x,y,r,stroke,w){target.beginPath();target.strokeStyle=stroke;target.lineWidth=w;target.arc(x,y,r,0,Math.PI*2);target.stroke();}
 function randomFactory(seed){let state=seed;return()=>{state=(state*1664525+1013904223)%4294967296;return state/4294967296;};}
-function buildBackgroundLayers(){const key=`${Math.round(viewport.width)}x${Math.round(viewport.height)}`;if(key===cache.backgroundKey&&cache.backgroundLayers.length===3)return;cache.backgroundKey=key;const width=Math.max(1,Math.round(viewport.width)),height=Math.max(1,Math.round(viewport.height)),layerConfigs=[{seed:42,count:110,minRadius:0.8,maxRadius:1.8,alphaMin:0.14,alphaMax:0.28,color:"255,255,255"},{seed:84,count:75,minRadius:1.2,maxRadius:2.4,alphaMin:0.12,alphaMax:0.24,color:"122,205,255"},{seed:126,count:34,minRadius:1.8,maxRadius:3.6,alphaMin:0.08,alphaMax:0.18,color:"255,212,140"}];cache.backgroundLayers=layerConfigs.map((config)=>{const node=makeCanvas(width,height),g=node.getContext("2d"),random=randomFactory(config.seed);for(let i=0;i<config.count;i+=1){fillCircle(g,random()*width,random()*height,config.minRadius+random()*(config.maxRadius-config.minRadius),`rgba(${config.color},${config.alphaMin+random()*(config.alphaMax-config.alphaMin)})`);}return node;});}
-function buildArena(){const key=`${Math.round(networkState.worldRadius)}`;if(key===cache.arenaKey&&cache.arena)return;cache.arenaKey=key;const radius=Math.ceil(networkState.worldRadius+18),node=makeCanvas(radius*2,radius*2),g=node.getContext("2d");g.translate(radius,radius);strokeCircle(g,0,0,networkState.worldRadius,"#0d2335",10);strokeCircle(g,0,0,networkState.worldRadius,"rgba(96,212,255,0.32)",4);strokeCircle(g,0,0,networkState.worldRadius*0.82,"rgba(255,179,71,0.3)",1.5);cache.arena=node;}
-function buildSun(){const primarySun=(networkState.suns&&networkState.suns[0])||networkState.sun;const key=`${Math.round(primarySun.radius)}`;if(key===cache.sunKey&&cache.sun)return;cache.sunKey=key;const extent=Math.ceil(primarySun.radius+42),node=makeCanvas(extent*2,extent*2),g=node.getContext("2d");g.translate(extent,extent);fillCircle(g,0,0,primarySun.radius+28,"rgba(255,190,88,0.08)");fillCircle(g,0,0,primarySun.radius+12,"rgba(255,221,138,0.10)");fillCircle(g,0,0,primarySun.radius,"rgba(255,200,87,0.94)");fillCircle(g,-primarySun.radius*0.2,-primarySun.radius*0.22,primarySun.radius*0.46,"rgba(255,255,255,0.14)");strokeCircle(g,0,0,primarySun.radius+7,"rgba(255,226,154,0.1)",5);cache.sun=node;}
+function buildBackgroundLayers(){
+    const key=`${Math.round(viewport.width)}x${Math.round(viewport.height)}`;
+    if(key===cache.backgroundKey&&cache.backgroundLayers.length===3)return;
+    cache.backgroundKey=key;
+    
+    // Cleanup old objects
+    cache.backgroundLayers.forEach(layer => {
+        scene.remove(layer);
+        if(layer.material.map) layer.material.map.dispose();
+        layer.material.dispose();
+    });
+    
+    const width=Math.max(1,Math.round(viewport.width)),height=Math.max(1,Math.round(viewport.height)),
+    layerConfigs=[
+        {seed:42,count:110,minRadius:0.8,maxRadius:1.8,alphaMin:0.14,alphaMax:0.28,color:"255,255,255"},
+        {seed:84,count:75,minRadius:1.2,maxRadius:2.4,alphaMin:0.12,alphaMax:0.24,color:"122,205,255"},
+        {seed:126,count:34,minRadius:1.8,maxRadius:3.6,alphaMin:0.08,alphaMax:0.18,color:"255,212,140"}
+    ];
+    
+    cache.backgroundLayers=layerConfigs.map((config, index)=>{
+        const node=makeCanvas(width,height),g=node.getContext("2d"),random=randomFactory(config.seed);
+        for(let i=0;i<config.count;i+=1){
+            fillCircle(g,random()*width,random()*height,config.minRadius+random()*(config.maxRadius-config.minRadius),`rgba(${config.color},${config.alphaMin+random()*(config.alphaMax-config.alphaMin)})`);
+        }
+        
+        const texture = new THREE.CanvasTexture(node);
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(cache.geometries.plane, material);
+        mesh.position.z = -10 + index;
+        scene.add(mesh);
+        return mesh;
+    });
+}
+function buildArena(){
+    const key=`${Math.round(networkState.worldRadius)}`;
+    if(key===cache.arenaKey&&cache.arena)return;
+    cache.arenaKey=key;
+    
+    const radius=Math.ceil(networkState.worldRadius+18);
+    const node=makeCanvas(radius*2,radius*2),g=node.getContext("2d");
+    g.translate(radius,radius);
+    strokeCircle(g,0,0,networkState.worldRadius,"#0d2335",10);
+    strokeCircle(g,0,0,networkState.worldRadius,"rgba(96,212,255,0.32)",4);
+    strokeCircle(g,0,0,networkState.worldRadius*0.82,"rgba(255,179,71,0.3)",1.5);
+    
+    if(!cache.arena) {
+        const texture = new THREE.CanvasTexture(node);
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(cache.geometries.plane, material);
+        mesh.position.z = 1;
+        scene.add(mesh);
+        cache.arena = mesh;
+    } else {
+        cache.arena.material.map.dispose();
+        cache.arena.material.map = new THREE.CanvasTexture(node);
+    }
+    cache.arena.scale.set(radius*2, radius*2, 1);
+}
+function buildSun(){
+    const primarySun=(networkState.suns&&networkState.suns[0])||networkState.sun;
+    const key=`${Math.round(primarySun.radius)}`;
+    if(key===cache.sunKey&&cache.sun)return;
+    cache.sunKey=key;
+    
+    const extent=Math.ceil(primarySun.radius+42),node=makeCanvas(extent*2,extent*2),g=node.getContext("2d");
+    g.translate(extent,extent);
+    fillCircle(g,0,0,primarySun.radius+28,"rgba(255,190,88,0.08)");
+    fillCircle(g,0,0,primarySun.radius+12,"rgba(255,221,138,0.10)");
+    fillCircle(g,0,0,primarySun.radius,"rgba(255,200,87,0.94)");
+    fillCircle(g,-primarySun.radius*0.2,-primarySun.radius*0.22,primarySun.radius*0.46,"rgba(255,255,255,0.14)");
+    strokeCircle(g,0,0,primarySun.radius+7,"rgba(255,226,154,0.1)",5);
+    
+    if(!cache.sun) {
+        const texture = new THREE.CanvasTexture(node);
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(cache.geometries.plane, material);
+        mesh.position.z = 2;
+        cache.sun = mesh;
+    } else {
+        cache.sun.material.map.dispose();
+        cache.sun.material.map = new THREE.CanvasTexture(node);
+    }
+    cache.sun.prototypeSize = extent * 2;
+}
 function planetSpriteKey(planet,isLocalPlayer){const instability=Math.max(0,Math.min(5,Math.round((((planet.modifier||1)-1)*100)/50)));const stateKey=planet.alive===false?"dead":"alive";return`${planet.color}-${Math.round(planet.radius)}-${isLocalPlayer?"local":"remote"}-${instability}-${stateKey}`;}
 function getPlanetSprite(planet,isLocalPlayer){const key=planetSpriteKey(planet,isLocalPlayer);if(cache.planetSprites.has(key))return cache.planetSprites.get(key);const instability=Math.max(0,Math.min(1,((planet.modifier||1)-1)/5)),baseRadius=Math.max(8,Math.round(planet.radius)),auraRadius=Math.ceil(baseRadius+10+instability*10),padding=16,size=(auraRadius+padding)*2,node=makeCanvas(size,size),g=node.getContext("2d"),center=size/2,alpha=planet.alive===false?0.35:0.95;fillCircle(g,center-(baseRadius*0.18),center-(baseRadius*0.22),baseRadius*0.72,`rgba(255,255,255,${alpha*0.12})`);fillCircle(g,center,center,baseRadius,rgba(planet.color,alpha));strokeCircle(g,center,center,baseRadius+3+instability*2,isLocalPlayer?"rgba(255,255,255,0.24)":"rgba(228,237,247,0.18)",isLocalPlayer?2.5:1.75);const sprite={node,size,center,baseRadius,auraRadius};cache.planetSprites.set(key,sprite);return sprite;}
-function resizeBackingStore(){const inner=getHostInnerSize(),dpr=Math.min(window.devicePixelRatio||1,DPR_CAP),nextWidth=Math.max(1,Math.round(inner.width)),nextHeight=Math.max(1,Math.round(inner.height));viewport={width:nextWidth,height:nextHeight,centerX:nextWidth/2,centerY:nextHeight/2};pointerState.x=Math.min(nextWidth,Math.max(0,pointerState.x));pointerState.y=Math.min(nextHeight,Math.max(0,pointerState.y));if(dpr===cache.dpr&&canvas.width===Math.round(nextWidth*dpr)&&canvas.height===Math.round(nextHeight*dpr))return;cache.dpr=dpr;canvas.width=Math.round(nextWidth*dpr);canvas.height=Math.round(nextHeight*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.imageSmoothingEnabled=true;}
+function resizeBackingStore(){
+    const inner=getHostInnerSize(),dpr=Math.min(window.devicePixelRatio||1,DPR_CAP),nextWidth=Math.max(1,Math.round(inner.width)),nextHeight=Math.max(1,Math.round(inner.height));
+    viewport={width:nextWidth,height:nextHeight,centerX:nextWidth/2,centerY:nextHeight/2};
+    pointerState.x=Math.min(nextWidth,Math.max(0,pointerState.x));
+    pointerState.y=Math.min(nextHeight,Math.max(0,pointerState.y));
+    
+    if(dpr===cache.dpr&&canvas.width===Math.round(nextWidth*dpr)&&canvas.height===Math.round(nextHeight*dpr))return;
+    
+    cache.dpr=dpr;
+    renderer.setSize(nextWidth, nextHeight);
+    renderer.setPixelRatio(dpr);
+    camera3d.left = -nextWidth / 2;
+    camera3d.right = nextWidth / 2;
+    camera3d.top = -nextHeight / 2;
+    camera3d.bottom = nextHeight / 2;
+    camera3d.updateProjectionMatrix();
+    uiCanvas.width = Math.round(nextWidth * dpr);
+    uiCanvas.height = Math.round(nextHeight * dpr);
+    uiCanvas.style.width = `${nextWidth}px`;
+    uiCanvas.style.height = `${nextHeight}px`;
+    uiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    uiCtx.imageSmoothingEnabled = true;
+}
 function getHostInnerSize(){const styles=window.getComputedStyle(hostElement),paddingX=parseFloat(styles.paddingLeft||"0")+parseFloat(styles.paddingRight||"0"),paddingY=parseFloat(styles.paddingTop||"0")+parseFloat(styles.paddingBottom||"0");return{width:Math.max(1,Math.floor(hostElement.clientWidth-paddingX)),height:Math.max(1,Math.floor(hostElement.clientHeight-paddingY))};}
 function attachInputListeners(){function updatePointer(event){const rect=canvas.getBoundingClientRect();pointerState.x=((event.clientX-rect.left)/Math.max(rect.width,1))*viewport.width;pointerState.y=((event.clientY-rect.top)/Math.max(rect.height,1))*viewport.height;}canvas.addEventListener("mousemove",(event)=>{updatePointer(event);sendContinuousAim();});canvas.addEventListener("mousedown",(event)=>{updatePointer(event);if(!battlePlanetGame.isActive()||!getPlayer())return;pointerState.down=true;ensureAudio();playShootSound();const worldPoint=screenToWorld(pointerState.x,pointerState.y);inputSender({x:worldPoint.x,y:worldPoint.y,fireHeld:true,firePulse:true});});window.addEventListener("mouseup",()=>{if(!pointerState.down)return;pointerState.down=false;sendContinuousAim();});canvas.addEventListener("wheel",(event)=>{event.preventDefault();zoom=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,zoom-Math.sign(event.deltaY)*ZOOM_STEP));sendContinuousAim();},{passive:false});canvas.addEventListener("contextmenu",(event)=>event.preventDefault());window.addEventListener("resize",()=>battlePlanetGame.resizeToContainer());window.addEventListener("keydown",(event)=>{if(event.key==="Tab"&&battlePlanetGame.isActive()){event.preventDefault();showLeaderboard=true;}});window.addEventListener("keyup",(event)=>{if(event.key==="Tab")showLeaderboard=false;});}
 function ensureAudio(){if(audioState.context){if(audioState.context.state==="suspended")audioState.context.resume();return audioState.context;}const AudioContextClass=window.AudioContext||window.webkitAudioContext;if(!AudioContextClass)return null;const audioContext=new AudioContextClass(),masterGain=audioContext.createGain();masterGain.gain.value=0.06;masterGain.connect(audioContext.destination);audioState.context=audioContext;audioState.masterGain=masterGain;return audioContext;}
@@ -70,7 +210,7 @@ function worldToScreenSize(size){return size*zoom;}
 function isCircleVisible(x,y,radius){return x+radius>=-VISIBILITY_MARGIN&&x-radius<=viewport.width+VISIBILITY_MARGIN&&y+radius>=-VISIBILITY_MARGIN&&y-radius<=viewport.height+VISIBILITY_MARGIN;}
 function perfNow(){return performance.now();}
 function roundPerfValue(value){return Math.round(value*100)/100;}
-function recordPerfSample(sample){const now=Date.now();if(perfState.frameCount===0)perfState.sampleStartedAt=now;perfState.frameCount+=1;perfState.totals.frame+=sample.frame;perfState.totals.background+=sample.background;perfState.totals.arena+=sample.arena;perfState.totals.entities+=sample.entities;perfState.totals.effects+=sample.effects;perfState.totals.ui+=sample.ui;if(perfState.frameCount<PERF_SAMPLE_WINDOW)return;const elapsedMs=Math.max(1,now-perfState.sampleStartedAt);perfState.snapshot={fps:roundPerfValue((perfState.frameCount*1000)/elapsedMs),frameMs:roundPerfValue(perfState.totals.frame/perfState.frameCount),backgroundMs:roundPerfValue(perfState.totals.background/perfState.frameCount),arenaMs:roundPerfValue(perfState.totals.arena/perfState.frameCount),entitiesMs:roundPerfValue(perfState.totals.entities/perfState.frameCount),effectsMs:roundPerfValue(perfState.totals.effects/perfState.frameCount),uiMs:roundPerfValue(perfState.totals.ui/perfState.frameCount),sampleMs:elapsedMs,frames:perfState.frameCount,frameCap,viewport:{width:viewport.width,height:viewport.height},zoom:roundPerfValue(zoom),updatedAt:now};perfState.frameCount=0;perfState.sampleStartedAt=0;perfState.totals={frame:0,background:0,arena:0,entities:0,effects:0,ui:0};perfState.lastUpdatedAt=now;globalScope.BattlePlanetPerf=perfState.snapshot;}
+function recordPerfSample(sample){const now=Date.now();if(perfState.frameCount===0)perfState.sampleStartedAt=now;perfState.frameCount+=1;perfState.totals.frame+=sample.frame;perfState.totals.background+=sample.background;perfState.totals.arena+=sample.arena;perfState.totals.entities+=sample.entities;perfState.totals.effects+=sample.effects;perfState.totals.ui+=sample.ui;if(perfState.frameCount<PERF_SAMPLE_WINDOW)return;const elapsedMs=Math.max(1,now-perfState.sampleStartedAt);perfState.snapshot={fps:roundPerfValue((perfState.frameCount*1000)/elapsedMs),frameMs:roundPerfValue(perfState.totals.frame/perfState.frameCount),backgroundMs:roundPerfValue(perfState.totals.background/perfState.frameCount),arenaMs:roundPerfValue(perfState.totals.arena/perfState.frameCount),entitiesMs:roundPerfValue(perfState.totals.entities/perfState.frameCount),effectsMs:roundPerfValue(perfState.totals.effects/perfState.frameCount),uiMs:roundPerfValue(perfState.totals.ui/perfState.frameCount),sampleMs:elapsedMs,frames:perfState.frameCount,frameCap,viewport:{width:viewport.width,height:viewport.height},zoom:roundPerfValue(zoom),updatedAt:now};perfState.frameCount=0;perfState.sampleStartedAt=0;perfState.totals={frame:0,background:0,arena:0,entities:0,effects:0,ui:0};perfState.lastUpdatedAt=now;window.BattlePlanetPerf=perfState.snapshot;}
 function getPerfStats(){return perfState.snapshot||{fps:0,frameMs:0,backgroundMs:0,arenaMs:0,entitiesMs:0,effectsMs:0,uiMs:0,sampleMs:0,frames:0,frameCap,viewport:{width:viewport.width,height:viewport.height},zoom:roundPerfValue(zoom),updatedAt:perfState.lastUpdatedAt};}
 function historyForEntity(entity){const existing=roundHistory.get(entity.id);if(existing){existing.name=entity.name||existing.name;existing.team=entity.team||existing.team;return existing;}const created={id:entity.id,name:entity.name||entity.id,team:entity.team||"unknown",rounds:0,wins:0,losses:0,deaths:0,lastOutcome:""};roundHistory.set(entity.id,created);return created;}
 function updateRoundHistory(state){const currentEntities=[...state.players,...state.enemies];currentEntities.forEach((entity)=>historyForEntity(entity));if(state.status==="playing"){resolvedRoundStatus=null;return;}if(resolvedRoundStatus===state.status)return;resolvedRoundStatus=state.status;const playerTeamWon=state.status==="won";for(const entity of currentEntities){const history=historyForEntity(entity),alive=entity.alive!==false,isPlayerTeam=entity.team!=="enemy";history.rounds+=1;if((playerTeamWon&&isPlayerTeam)||(!playerTeamWon&&!isPlayerTeam))history.wins+=1;else history.losses+=1;if(!alive)history.deaths+=1;history.lastOutcome=alive?"survived":"destroyed";}}
@@ -88,13 +228,245 @@ function updateUi(){const aliveEnemies=networkState.enemies.filter((enemy)=>enem
 if(shouldRefresh&&controlsText!==lastControlsText){controlsElement.textContent=controlsText;lastControlsText=controlsText;}leaderboardElement.hidden=!showLeaderboard;if(showLeaderboard){const perf=getPerfStats(),sortEntities=(left,right)=>{const aliveDelta=(right.alive!==false)-(left.alive!==false);if(aliveDelta!==0)return aliveDelta;return (right.modifier||1)-(left.modifier||1);},players=[...networkState.players].sort(sortEntities).map((entry)=>{const history=historyForEntity(entry);return leaderboardLine(entry,{alive:entry.alive!==false,instability:Math.round(((entry.modifier||1)-1)*100),isLocalPlayer:entry.id===networkState.playerId,history});}),bots=[...networkState.enemies].sort(sortEntities).map((entry)=>{const history=historyForEntity(entry);return leaderboardLine(entry,{alive:entry.alive!==false,instability:Math.round(((entry.modifier||1)-1)*100),isLocalPlayer:false,history});}),historySummary=[...roundHistory.values()].sort((left,right)=>{if(right.wins!==left.wins)return right.wins-left.wins;if(left.losses!==right.losses)return left.losses-right.losses;return left.name.localeCompare(right.name);}).slice(0,8).map((entry)=>`${entry.name}  W${entry.wins}-L${entry.losses}  D${entry.deaths}`),leaderboardText=["Match Board",`Status: ${networkState.status}   Enemies left: ${aliveEnemies}`,"","Pilots",...(players.length>0?players:["No pilots connected"]),"","Bots",...(bots.length>0?bots:["No bots"]),"","Campaign",...(historySummary.length>0?historySummary:["No completed rounds yet"]),"","Rendering",`Cap ${perf.frameCap}   FPS ${perf.fps}   ${perf.frames} frames / ${perf.sampleMs}ms`,`Cost ${perf.frameMs}ms   BG ${perf.backgroundMs}   Arena ${perf.arenaMs}`,`Entities ${perf.entitiesMs}   Effects ${perf.effectsMs}   UI ${perf.uiMs}`,`Viewport ${perf.viewport.width}x${perf.viewport.height}  Zoom ${perf.zoom}`].join("\n");if(shouldRefresh&&leaderboardText!==lastLeaderboardText){leaderboardElement.textContent=leaderboardText;lastLeaderboardText=leaderboardText;}}else if(lastLeaderboardText){lastLeaderboardText="";}if(shouldRefresh)lastUiTextUpdateAt=now;}
 function updateAudio(){const explosions=networkState.explosions||[],recentIds=new Set();for(const explosion of explosions){recentIds.add(explosion.id);if(!audioState.playedExplosions.has(explosion.id)){ensureAudio();playExplosionSound(Math.max(0.8,Math.min(1.6,explosion.radius/18)));audioState.playedExplosions.add(explosion.id);}}audioState.playedExplosions.forEach((id)=>{if(!recentIds.has(id))audioState.playedExplosions.delete(id);});}
 function labelForPlanet(planet,isLocalPlayer){const instabilityPercent=Math.round(((planet.modifier||1)-1)*100),fallbackName=isLocalPlayer?"You":(planet.team==="enemy"?"Bot":"Player");return `${planet.name||fallbackName}  +${instabilityPercent}%`;}
-function drawLabel(text,x,y,fillStyle,fontSize){ctx.font=`700 ${fontSize}px 'Trebuchet MS', 'Segoe UI', sans-serif`;ctx.textAlign="center";ctx.textBaseline="bottom";ctx.lineJoin="round";ctx.strokeStyle="#07111d";ctx.lineWidth=Math.max(3,fontSize*0.34);ctx.strokeText(text,x,y);ctx.fillStyle=fillStyle;ctx.fillText(text,x,y);}
-function renderPlanet(planet,isLocalPlayer){const x=worldToScreenX(planet.x),y=worldToScreenY(planet.y),screenRadius=Math.max(2,worldToScreenSize(planet.radius)),sprite=getPlanetSprite(planet,isLocalPlayer),spriteScreenSize=sprite.size*zoom,auraRadius=Math.max(screenRadius+2,sprite.auraRadius*zoom);if(!isCircleVisible(x,y,auraRadius))return;ctx.drawImage(sprite.node,x-spriteScreenSize/2,y-spriteScreenSize/2,spriteScreenSize,spriteScreenSize);const noseX=x+Math.cos(planet.angle)*(screenRadius+worldToScreenSize(8)),noseY=y+Math.sin(planet.angle)*(screenRadius+worldToScreenSize(8)),leftX=x+Math.cos(planet.angle+2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),leftY=y+Math.sin(planet.angle+2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),rightX=x+Math.cos(planet.angle-2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),rightY=y+Math.sin(planet.angle-2.4)*Math.max(2,screenRadius-worldToScreenSize(4));ctx.strokeStyle=isLocalPlayer?"#ffffff":"#c9d6e2";ctx.lineWidth=Math.max(1.25,isLocalPlayer?worldToScreenSize(3):worldToScreenSize(2));ctx.beginPath();ctx.moveTo(noseX,noseY);ctx.lineTo(leftX,leftY);ctx.lineTo(rightX,rightY);ctx.closePath();ctx.stroke();const labelY=y-screenRadius-Math.max(10,worldToScreenSize(12));if(labelY>-VISIBILITY_MARGIN&&labelY<viewport.height+VISIBILITY_MARGIN){drawLabel(labelForPlanet(planet,isLocalPlayer),x,labelY,isLocalPlayer?"#ffffff":(planet.team==="enemy"?"#ffd7bf":"#d7e6f6"),Math.max(11,Math.min(18,12+zoom*3.5)));}}
-function drawBackground(){const layers=cache.backgroundLayers;if(layers.length===0)return;ctx.fillStyle="#06111d";ctx.fillRect(0,0,viewport.width,viewport.height);const parallaxDepths=[0.08,0.16,0.28];for(let index=0;index<layers.length;index+=1){const layer=layers[index],depth=parallaxDepths[index]||0.1,offsetX=(-camera.x*depth)%viewport.width,offsetY=(-camera.y*depth)%viewport.height,startX=offsetX>0?offsetX-viewport.width:offsetX,startY=offsetY>0?offsetY-viewport.height:offsetY;for(let tileX=startX;tileX<viewport.width;tileX+=viewport.width){for(let tileY=startY;tileY<viewport.height;tileY+=viewport.height){ctx.drawImage(layer,tileX,tileY,viewport.width,viewport.height);}}}}
-function renderGuides(){const player=getPlayer();if(!player)return;const renderedPlayer=renderStateForPlanet(player,true),anchorSun=nearestSunFor(player);ctx.strokeStyle="rgba(255,209,102,0.28)";ctx.lineWidth=Math.max(1,worldToScreenSize(1.5));ctx.beginPath();ctx.moveTo(worldToScreenX(renderedPlayer.x),worldToScreenY(renderedPlayer.y));ctx.lineTo(worldToScreenX(anchorSun.x),worldToScreenY(anchorSun.y));ctx.stroke();if(player.alive!==false&&networkState.status==="playing"){ctx.strokeStyle="rgba(140,240,255,0.45)";ctx.beginPath();ctx.moveTo(worldToScreenX(renderedPlayer.x),worldToScreenY(renderedPlayer.y));ctx.lineTo(pointerState.x,pointerState.y);ctx.stroke();strokeCircle(ctx,pointerState.x,pointerState.y,8,"rgba(140,240,255,0.45)",1.5);}const playerDistance=distanceFromCenter(player);if(playerDistance>networkState.worldRadius*0.82){const intensity=Math.min(1,(playerDistance-networkState.worldRadius*0.82)/(networkState.worldRadius*0.18));ctx.strokeStyle=`rgba(255,107,107,${0.18+intensity*0.26})`;ctx.lineWidth=14;ctx.strokeRect(7,7,viewport.width-14,viewport.height-14);}}
-function render(){buildBackgroundLayers();const frameStart=perfNow();ctx.clearRect(0,0,viewport.width,viewport.height);const backgroundStart=perfNow();drawBackground();const backgroundEnd=perfNow();buildArena();buildSun();const arenaDrawStart=perfNow(),arenaSize=cache.arena.width*zoom,arenaX=worldToScreenX(0)-arenaSize/2,arenaY=worldToScreenY(0)-arenaSize/2;ctx.drawImage(cache.arena,arenaX,arenaY,arenaSize,arenaSize);const primaryRadius=Math.max(1,primarySunRadius());for(const sun of activeSuns()){const sunScale=sun.radius/primaryRadius,drawWidth=cache.sun.width*zoom*sunScale,drawHeight=cache.sun.height*zoom*sunScale,sunX=worldToScreenX(sun.x)-drawWidth/2,sunY=worldToScreenY(sun.y)-drawHeight/2;ctx.drawImage(cache.sun,sunX,sunY,drawWidth,drawHeight);}const arenaDrawEnd=perfNow();const entitiesStart=perfNow();for(const asteroid of networkState.asteroids||[]){const x=worldToScreenX(asteroid.x),y=worldToScreenY(asteroid.y),screenRadius=Math.max(2,worldToScreenSize(asteroid.radius));if(!isCircleVisible(x,y,screenRadius+6))continue;fillCircle(ctx,x-1.4,y-1.8,screenRadius*0.52,"rgba(255,255,255,0.1)");fillCircle(ctx,x,y,screenRadius,rgba(asteroid.color,0.92));}for(const rock of networkState.rocks){const x=worldToScreenX(rock.x),y=worldToScreenY(rock.y),screenRadius=Math.max(1.5,worldToScreenSize(rock.radius));if(!isCircleVisible(x,y,screenRadius+8))continue;fillCircle(ctx,x-1.2,y-1.2,Math.max(1.2,screenRadius*0.55),"rgba(255,255,255,0.14)");fillCircle(ctx,x,y,screenRadius,rgba(rock.color,0.95));}for(const player of networkState.players)renderPlanet(renderStateForPlanet(player,player.id===networkState.playerId),player.id===networkState.playerId);for(const enemy of networkState.enemies)renderPlanet(enemy,false);const entitiesEnd=perfNow();const effectsStart=perfNow();for(const explosion of networkState.explosions||[]){const alpha=explosion.maxTtl?Math.max(0,explosion.ttl/explosion.maxTtl):0.5,radius=worldToScreenSize(explosion.radius*(1.35-alpha*0.35)),x=worldToScreenX(explosion.x),y=worldToScreenY(explosion.y);if(!isCircleVisible(x,y,radius+8))continue;strokeCircle(ctx,x,y,radius,rgba(explosion.color,alpha*0.9),Math.max(1.5,worldToScreenSize(3)));}renderGuides();const effectsEnd=perfNow();const uiStart=perfNow();updateUi();const uiEnd=perfNow();recordPerfSample({frame:uiEnd-frameStart,background:backgroundEnd-backgroundStart,arena:arenaDrawEnd-arenaDrawStart,entities:entitiesEnd-entitiesStart,effects:effectsEnd-effectsStart,ui:uiEnd-uiStart});}
+function drawLabel(text,x,y,fillStyle,fontSize){
+    uiCtx.font=`700 ${fontSize}px 'Trebuchet MS', 'Segoe UI', sans-serif`;
+    uiCtx.textAlign="center";
+    uiCtx.textBaseline="bottom";
+    uiCtx.lineJoin="round";
+    uiCtx.strokeStyle="#07111d";
+    uiCtx.lineWidth=Math.max(3,fontSize*0.34);
+    uiCtx.strokeText(text,x,y);
+    uiCtx.fillText(text,x,y);
+    uiCtx.fillStyle=fillStyle;
+    uiCtx.fillText(text,x,y);
+}
+
+function getThreeObject(id, type, creator) {
+    if (cache.threeObjects.has(id)) return cache.threeObjects.get(id);
+    const obj = creator();
+    scene.add(obj);
+    cache.threeObjects.set(id, obj);
+    return obj;
+}
+
+function renderPlanet(planet,isLocalPlayer){
+    const x=worldToScreenX(planet.x),y=worldToScreenY(planet.y),screenRadius=Math.max(2,worldToScreenSize(planet.radius)),sprite=getPlanetSprite(planet,isLocalPlayer),auraRadius=Math.max(screenRadius+2,sprite.auraRadius*zoom);
+    const obj = getThreeObject(planet.id, "planet", () => {
+        const texture = new THREE.CanvasTexture(sprite.node);
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+        return new THREE.Mesh(cache.geometries.plane, material);
+    });
+    if(!isCircleVisible(x,y,auraRadius)) {
+        obj.visible = false;
+    } else {
+        if (obj.material.map.image !== sprite.node) {
+            obj.material.map.dispose();
+            obj.material.map = new THREE.CanvasTexture(sprite.node);
+        }
+        obj.visible = true;
+        obj.position.set(planet.x, planet.y, 5);
+        obj.scale.set(sprite.size, sprite.size, 1);
+    }
+    const noseX=x+Math.cos(planet.angle)*(screenRadius+worldToScreenSize(8)),noseY=y+Math.sin(planet.angle)*(screenRadius+worldToScreenSize(8)),leftX=x+Math.cos(planet.angle+2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),leftY=y+Math.sin(planet.angle+2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),rightX=x+Math.cos(planet.angle-2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),rightY=y+Math.sin(planet.angle-2.4)*Math.max(2,screenRadius-worldToScreenSize(4));
+    uiCtx.strokeStyle=isLocalPlayer?"#ffffff":"#c9d6e2";
+    uiCtx.lineWidth=Math.max(1.25,isLocalPlayer?worldToScreenSize(3):worldToScreenSize(2));
+    uiCtx.beginPath();
+    uiCtx.moveTo(noseX,noseY);
+    uiCtx.lineTo(leftX,leftY);
+    uiCtx.lineTo(rightX,rightY);
+    uiCtx.closePath();
+    uiCtx.stroke();
+    const labelY=y-screenRadius-Math.max(10,worldToScreenSize(12));
+    if(labelY>-VISIBILITY_MARGIN&&labelY<viewport.height+VISIBILITY_MARGIN){
+        drawLabel(labelForPlanet(planet,isLocalPlayer),x,labelY,isLocalPlayer?"#ffffff":(planet.team==="enemy"?"#ffd7bf":"#d7e6f6"),Math.max(11,Math.min(18,12+zoom*3.5)));
+    }
+}
+
+function drawBackground(){
+    const layers=cache.backgroundLayers;
+    if(layers.length===0)return;
+    const parallaxDepths=[0.08,0.16,0.28];
+    for(let index=0;index<layers.length;index+=1){
+        const layer=layers[index],depth=parallaxDepths[index]||0.1;
+        layer.position.set(camera.x, camera.y, layer.position.z);
+        layer.scale.set(viewport.width / zoom, viewport.height / zoom, 1);
+        const tex = layer.material.map;
+        tex.offset.set((camera.x * depth) / viewport.width, -(camera.y * depth) / viewport.height);
+    }
+}
+
+function renderGuides(){
+    const player=getPlayer();
+    if(!player)return;
+    const renderedPlayer=renderStateForPlanet(player,true),anchorSun=nearestSunFor(player);
+    uiCtx.strokeStyle="rgba(255,209,102,0.28)";
+    uiCtx.lineWidth=Math.max(1,worldToScreenSize(1.5));
+    uiCtx.beginPath();
+    uiCtx.moveTo(worldToScreenX(renderedPlayer.x),worldToScreenY(renderedPlayer.y));
+    uiCtx.lineTo(worldToScreenX(anchorSun.x),worldToScreenY(anchorSun.y));
+    uiCtx.stroke();
+    if(player.alive!==false&&networkState.status==="playing"){
+        uiCtx.strokeStyle="rgba(140,240,255,0.45)";
+        uiCtx.beginPath();
+        uiCtx.moveTo(worldToScreenX(renderedPlayer.x),worldToScreenY(renderedPlayer.y));
+        uiCtx.lineTo(pointerState.x,pointerState.y);
+        uiCtx.stroke();
+        uiCtx.beginPath();
+        uiCtx.strokeStyle="rgba(140,240,255,0.45)";
+        uiCtx.lineWidth=1.5;
+        uiCtx.arc(pointerState.x,pointerState.y,8,0,Math.PI*2);
+        uiCtx.stroke();
+    }
+    const playerDistance=distanceFromCenter(player);
+    if(playerDistance>networkState.worldRadius*0.82){
+        const intensity=Math.min(1,(playerDistance-networkState.worldRadius*0.82)/(networkState.worldRadius*0.18));
+        uiCtx.strokeStyle=`rgba(255,107,107,${0.18+intensity*0.26})`;
+        uiCtx.lineWidth=14;
+        uiCtx.strokeRect(7,7,viewport.width-14,viewport.height-14);
+    }
+}
+
+function render(){
+    buildBackgroundLayers();
+    const frameStart=perfNow();
+    uiCtx.clearRect(0,0,viewport.width,viewport.height);
+    camera3d.position.x = camera.x;
+    camera3d.position.y = camera.y;
+    camera3d.zoom = zoom;
+    camera3d.updateProjectionMatrix();
+    const backgroundStart=perfNow();
+    drawBackground();
+    const backgroundEnd=perfNow();
+    buildArena();
+    buildSun();
+    const arenaDrawStart=perfNow();
+    if (cache.arena) {
+        cache.arena.position.set(0, 0, 1);
+    }
+    const suns = activeSuns();
+    suns.forEach((sun, index) => {
+        const id = `sun-${index}`;
+        const obj = getThreeObject(id, "sun", () => {
+            const mesh = new THREE.Mesh(cache.geometries.plane, cache.sun.material.clone());
+            mesh.position.z = 2;
+            return mesh;
+        });
+        const sunScale = (sun.radius / (primarySunRadius() || 1)) * cache.sun.prototypeSize;
+        obj.position.set(sun.x, sun.y, 2);
+        obj.scale.set(sunScale, sunScale, 1);
+        if (obj.material.map !== cache.sun.material.map) {
+            obj.material.map = cache.sun.material.map;
+        }
+        obj.visible = true;
+    });
+    const arenaDrawEnd=perfNow();
+    const entitiesStart=perfNow();
+    (networkState.asteroids||[]).forEach((asteroid, index) => {
+        const id = `asteroid-${asteroid.id || index}`;
+        const obj = getThreeObject(id, "asteroid", () => {
+            const material = new THREE.MeshBasicMaterial({ color: asteroid.color, side: THREE.DoubleSide });
+            return new THREE.Mesh(cache.geometries.circle16, material);
+        });
+        obj.position.set(asteroid.x, asteroid.y, 3);
+        obj.scale.set(asteroid.radius, asteroid.radius, 1);
+        obj.material.color.set(asteroid.color);
+        obj.visible = isCircleVisible(worldToScreenX(asteroid.x), worldToScreenY(asteroid.y), worldToScreenSize(asteroid.radius));
+    });
+    networkState.rocks.forEach((rock, index) => {
+        const id = `rock-${rock.id || index}`;
+        const obj = getThreeObject(id, "rock", () => {
+            const material = new THREE.MeshBasicMaterial({ color: rock.color, side: THREE.DoubleSide });
+            return new THREE.Mesh(cache.geometries.circle8, material);
+        });
+        obj.position.set(rock.x, rock.y, 4);
+        obj.scale.set(rock.radius, rock.radius, 1);
+        obj.material.color.set(rock.color);
+        obj.visible = isCircleVisible(worldToScreenX(rock.x), worldToScreenY(rock.y), worldToScreenSize(rock.radius));
+    });
+    for (const player of networkState.players) renderPlanet(renderStateForPlanet(player,player.id===networkState.playerId),player.id===networkState.playerId);
+    for (const enemy of networkState.enemies) renderPlanet(enemy,false);
+    const entitiesEnd=perfNow();
+    const effectsStart=perfNow();
+    (networkState.explosions||[]).forEach((explosion, index) => {
+        const id = `explosion-${explosion.id || index}`;
+        const obj = getThreeObject(id, "explosion", () => {
+            const material = new THREE.MeshBasicMaterial({ color: explosion.color, transparent: true, side: THREE.DoubleSide });
+            return new THREE.Mesh(cache.geometries.ring, material);
+        });
+        const alpha=explosion.maxTtl?Math.max(0,explosion.ttl/explosion.maxTtl):0.5;
+        const radius=explosion.radius*(1.35-alpha*0.35);
+        obj.position.set(explosion.x, explosion.y, 6);
+        obj.scale.set(radius, radius, 1);
+        obj.material.color.set(explosion.color);
+        obj.material.opacity = alpha * 0.9;
+        obj.visible = isCircleVisible(worldToScreenX(explosion.x), worldToScreenY(explosion.y), worldToScreenSize(radius));
+    });
+    const currentIds = new Set([
+        ...suns.map((_, i) => `sun-${i}`),
+        ...(networkState.asteroids||[]).map((a, i) => `asteroid-${a.id || i}`),
+        ...networkState.rocks.map((r, i) => `rock-${r.id || i}`),
+        ...networkState.players.map(p => p.id),
+        ...networkState.enemies.map(e => e.id),
+        ...(networkState.explosions||[]).map((e, i) => `explosion-${e.id || i}`)
+    ]);
+    cache.threeObjects.forEach((obj, id) => {
+        if (!currentIds.has(id)) obj.visible = false;
+    });
+    renderGuides();
+    const effectsEnd=perfNow();
+    renderer.render(scene, camera3d);
+    const uiStart=perfNow();
+    updateUi();
+    const uiEnd=perfNow();
+    recordPerfSample({frame:uiEnd-frameStart,background:backgroundEnd-backgroundStart,arena:arenaDrawEnd-arenaDrawStart,entities:entitiesEnd-entitiesStart,effects:effectsEnd-effectsStart,ui:uiEnd-uiStart});
+}
 function frame(now){if(now-lastRenderAt<targetFrameMs()){if(isRunning)animationFrame=window.requestAnimationFrame(frame);return;}lastRenderAt=now;networkState=interpolatedState();syncLocalPlayerVisual();updateCamera();sendContinuousAim();updateAudio();render();if(isRunning)animationFrame=window.requestAnimationFrame(frame);}
-const battlePlanetGame={start(){if(isRunning)return;isRunning=true;lastRenderAt=0;animationFrame=window.requestAnimationFrame(frame);},stop(){isRunning=false;if(animationFrame!==null){window.cancelAnimationFrame(animationFrame);animationFrame=null;}},resizeToContainer(){if(Date.now()-resizeTimestamp<RESIZE_THROTTLE_MS)return;resizeTimestamp=Date.now();resizeBackingStore();buildBackgroundLayers();canvas.style.display="block";canvas.style.width=`${viewport.width}px`;canvas.style.height=`${viewport.height}px`;render();},setInputSender(sender){inputSender=sender;},setState(nextState){const snapshot=cloneState(nextState),offsetSample=Date.now()-snapshot.serverTime;if(serverOffsetEstimate===null)serverOffsetEstimate=offsetSample;else{serverOffsetEstimate=Math.min(serverOffsetEstimate,offsetSample);serverOffsetEstimate=lerp(serverOffsetEstimate,offsetSample,0.02);}const existingIndex=snapshotBuffer.findIndex((entry)=>entry.tickNumber===snapshot.tickNumber);if(existingIndex>=0)snapshotBuffer[existingIndex]=snapshot;else snapshotBuffer.push(snapshot);snapshotBuffer.sort((left,right)=>left.serverTime-right.serverTime);if(snapshotBuffer.length>MAX_SNAPSHOT_BUFFER)snapshotBuffer=snapshotBuffer.slice(snapshotBuffer.length-MAX_SNAPSHOT_BUFFER);networkState=interpolatedState();updateRoundHistory(networkState);buildArena();buildSun();const player=getPlayer();if(!player)localPlayerVisual=null;if(player&&!hasInitialCamera){const anchorSun=nearestSunFor(player);camera.x=player.x*(1-CAMERA_SUN_WEIGHT)+anchorSun.x*CAMERA_SUN_WEIGHT;camera.y=player.y*(1-CAMERA_SUN_WEIGHT)+anchorSun.y*CAMERA_SUN_WEIGHT;hasInitialCamera=true;}render();},clearState(){snapshotBuffer=[];serverOffsetEstimate=null;networkState=emptyState();audioState.playedExplosions.clear();lastUiTextUpdateAt=0;lastControlsText="";lastLeaderboardText="";lastRenderAt=0;camera={x:0,y:0};localPlayerVisual=null;hasInitialCamera=false;showLeaderboard=false;resolvedRoundStatus=null;roundHistory=new Map();leaderboardElement.hidden=true;buildBackgroundLayers();buildArena();buildSun();render();},getPerfStats(){return getPerfStats();},isActive(){return isRunning&&hostElement.style.display!=="none";}};
-battlePlanetGame.resizeToContainer();
-globalScope.BattlePlanetGame=battlePlanetGame;
-})(window);
+
+const battlePlanetGame={start(){if(isRunning)return;isRunning=true;lastRenderAt=0;animationFrame=window.requestAnimationFrame(frame);},stop(){isRunning=false;if(animationFrame!==null){window.cancelAnimationFrame(animationFrame);animationFrame=null;}},resizeToContainer(){if(Date.now()-resizeTimestamp<RESIZE_THROTTLE_MS)return;resizeTimestamp=Date.now();resizeBackingStore();buildBackgroundLayers();canvas.style.display="block";canvas.style.width=`${viewport.width}px`;canvas.style.height=`${viewport.height}px`;render();},setInputSender(sender){inputSender=sender;},setState(nextState){const snapshot=cloneState(nextState),offsetSample=Date.now()-snapshot.serverTime;if(serverOffsetEstimate===null)serverOffsetEstimate=offsetSample;else{serverOffsetEstimate=Math.min(serverOffsetEstimate,offsetSample);serverOffsetEstimate=lerp(serverOffsetEstimate,offsetSample,0.02);}const existingIndex=snapshotBuffer.findIndex((entry)=>entry.tickNumber===snapshot.tickNumber);if(existingIndex>=0)snapshotBuffer[existingIndex]=snapshot;else snapshotBuffer.push(snapshot);snapshotBuffer.sort((left,right)=>left.serverTime-right.serverTime);if(snapshotBuffer.length>MAX_SNAPSHOT_BUFFER)snapshotBuffer=snapshotBuffer.slice(snapshotBuffer.length-MAX_SNAPSHOT_BUFFER);networkState=interpolatedState();updateRoundHistory(networkState);buildArena();buildSun();const player=getPlayer();if(!player)localPlayerVisual=null;if(player&&!hasInitialCamera){const anchorSun=nearestSunFor(player);camera.x=player.x*(1-CAMERA_SUN_WEIGHT)+anchorSun.x*CAMERA_SUN_WEIGHT;camera.y=player.y*(1-CAMERA_SUN_WEIGHT)+anchorSun.y*CAMERA_SUN_WEIGHT;hasInitialCamera=true;}render();},clearState(){
+    snapshotBuffer=[];
+    serverOffsetEstimate=null;
+    networkState=emptyState();
+    audioState.playedExplosions.clear();
+    lastUiTextUpdateAt=0;
+    lastControlsText="";
+    lastLeaderboardText="";
+    lastRenderAt=0;
+    camera={x:0,y:0};
+    localPlayerVisual=null;
+    hasInitialCamera=false;
+    showLeaderboard=false;
+    resolvedRoundStatus=null;
+    roundHistory=new Map();
+    leaderboardElement.hidden=true;
+    cache.threeObjects.forEach(obj => scene.remove(obj));
+    cache.threeObjects.clear();
+    if(cache.arena) { scene.remove(cache.arena); cache.arena = null; }
+    if(cache.sun) { scene.remove(cache.sun); cache.sun = null; }
+    cache.backgroundLayers.forEach(layer => scene.remove(layer));
+    cache.backgroundLayers = [];
+    cache.backgroundKey = "";
+    cache.arenaKey = "";
+    cache.sunKey = "";
+    buildBackgroundLayers();
+    buildArena();
+    buildSun();
+    render();
+},getPerfStats(){return getPerfStats();},isActive(){return isRunning&&hostElement.style.display!=="none";}};
+
+function init() {
+    buildBackgroundLayers();
+    buildArena();
+    buildSun();
+    attachInputListeners();
+    syncFrameCapControl();
+    resizeBackingStore();
+    render();
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+} else {
+    init();
+}
+
+window.BattlePlanetGame=battlePlanetGame;
