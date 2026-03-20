@@ -948,6 +948,7 @@ class GameManager {
     }
 
     buildSnapshot() {
+        const round = (num) => Math.round(num * 10) / 10;
         const players = Object.keys(this.players)
             .map((token) => this.state[token])
             .filter(Boolean)
@@ -955,14 +956,14 @@ class GameManager {
                 id: body.id,
                 name: body.name,
                 team: body.team,
-                x: body.x,
-                y: body.y,
-                vx: body.vx,
-                vy: body.vy,
+                x: round(body.x),
+                y: round(body.y),
+                vx: round(body.vx),
+                vy: round(body.vy),
                 radius: body.radius,
-                angle: body.angle,
+                angle: round(body.angle),
                 health: body.health,
-                modifier: body.modifier,
+                modifier: round(body.modifier),
                 color: body.color,
                 alive: body.alive,
             }));
@@ -971,14 +972,14 @@ class GameManager {
             id: enemy.id,
             name: enemy.name,
             team: enemy.team,
-            x: enemy.x,
-            y: enemy.y,
-            vx: enemy.vx,
-            vy: enemy.vy,
+            x: round(enemy.x),
+            y: round(enemy.y),
+            vx: round(enemy.vx),
+            vy: round(enemy.vy),
             radius: enemy.radius,
-            angle: enemy.angle,
+            angle: round(enemy.angle),
             health: enemy.health,
-            modifier: enemy.modifier,
+            modifier: round(enemy.modifier),
             color: enemy.color,
             alive: enemy.alive,
         }));
@@ -987,31 +988,31 @@ class GameManager {
             id: rock.id,
             ownerId: rock.ownerId,
             team: rock.team,
-            x: rock.x,
-            y: rock.y,
+            x: round(rock.x),
+            y: round(rock.y),
             radius: rock.radius,
             color: rock.color,
         }));
 
         const explosions = this.state.explosions.map((explosion) => ({
             id: explosion.id,
-            x: explosion.x,
-            y: explosion.y,
-            radius: explosion.radius,
+            x: round(explosion.x),
+            y: round(explosion.y),
+            radius: round(explosion.radius),
             color: explosion.color,
-            ttl: explosion.ttl,
-            maxTtl: explosion.maxTtl,
+            ttl: round(explosion.ttl),
+            maxTtl: round(explosion.maxTtl),
         }));
 
         const asteroids = this.state.asteroids.map((asteroid) => ({
             id: asteroid.id,
             team: asteroid.team,
-            x: asteroid.x,
-            y: asteroid.y,
-            vx: asteroid.vx,
-            vy: asteroid.vy,
+            x: round(asteroid.x),
+            y: round(asteroid.y),
+            vx: round(asteroid.vx),
+            vy: round(asteroid.vy),
             radius: asteroid.radius,
-            angle: asteroid.angle,
+            angle: round(asteroid.angle),
             color: asteroid.color,
             alive: asteroid.alive,
         }));
@@ -1021,11 +1022,18 @@ class GameManager {
             tickNumber: this.tickNumber,
             status: this.state.status,
             worldRadius: this.arena.worldRadius,
-            sun: this.state.suns[0],
+            sun: {
+                id: this.state.suns[0].id,
+                x: round(this.state.suns[0].x),
+                y: round(this.state.suns[0].y),
+                radius: this.state.suns[0].radius,
+                mass: this.state.suns[0].mass,
+                color: this.state.suns[0].color,
+            },
             suns: this.state.suns.map((sun) => ({
                 id: sun.id,
-                x: sun.x,
-                y: sun.y,
+                x: round(sun.x),
+                y: round(sun.y),
                 radius: sun.radius,
                 mass: sun.mass,
                 color: sun.color,
