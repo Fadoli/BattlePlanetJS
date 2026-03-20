@@ -7,8 +7,8 @@ const SUN_RADIUS = 110;
 const SUN_MASS = 5200;
 const BINARY_SUN_OFFSET = 360;
 const BINARY_SUN_ANGULAR_SPEED = 0.22;
-const ASTEROID_RADIUS = 12;
-const ASTEROID_MASS = 180;
+const ASTEROID_RADIUS = 24;
+const ASTEROID_MASS = 360;
 const PLAYER_EJECT_SPEED = 9.5;
 const PLAYER_RECOIL = 0.72;
 const ROCK_RADIUS = 6;
@@ -35,7 +35,7 @@ const TEAM_PALETTES = Object.freeze({
 });
 const BASE_MODIFIER = 1;
 const MAX_MODIFIER = 6;
-const ROCK_HIT_MODIFIER_GAIN = 0.1;
+const ROCK_HIT_MODIFIER_GAIN = 0.05;
 const SUN_HIT_MODIFIER_GAIN = 0.6;
 const PLANET_COLLISION_MODIFIER_GAIN = 0.4;
 const PLAYER_FIRE_COOLDOWN = 0.08;
@@ -157,7 +157,8 @@ function resolvePlanetCollision(a, b) {
 
     const effectiveMassA = a.mass / (a.modifier || BASE_MODIFIER);
     const effectiveMassB = b.mass / (b.modifier || BASE_MODIFIER);
-    const impulse = (-1.1 * relativeVelocity) / ((1 / effectiveMassA) + (1 / effectiveMassB));
+    // Extreme bounciness (2.2) and massive kick floor (45.0)
+    const impulse = Math.max(45.0, (-2.2 * relativeVelocity) / ((1 / effectiveMassA) + (1 / effectiveMassB)));
     a.vx -= (impulse * nx) / effectiveMassA;
     a.vy -= (impulse * ny) / effectiveMassA;
     b.vx += (impulse * nx) / effectiveMassB;
@@ -387,7 +388,7 @@ class GameManager {
         for (let index = 0; index < count; index += 1) {
             const angle = ((Math.PI * 2) / Math.max(1, count)) * index;
             const speed = 2.8 + (index % 3) * 0.32;
-            const radius = 16 + (index % 3) * 2;
+            const radius = 45; // Massive size
             const id = `bot-${index + 1}`;
             let team = "enemy";
             if (this.settings.gameMode === "bots-ffa") {
@@ -451,8 +452,8 @@ class GameManager {
             y: Math.sin(angle) * orbitRadius,
             vx: -Math.sin(angle) * orbitalSpeed,
             vy: Math.cos(angle) * orbitalSpeed,
-            radius: 22,
-            mass: 264,
+            radius: 45, // Massive size
+            mass: 540,
             angle,
             health: 5,
             modifier: BASE_MODIFIER,

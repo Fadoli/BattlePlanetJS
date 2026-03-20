@@ -28,6 +28,7 @@ hostElement.appendChild(leaderboardElement);
 // Three.js Initialization
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 const canvas = renderer.domElement;
+canvas.style.position = "absolute";
 hostElement.appendChild(canvas);
 const scene = new THREE.Scene();
 const camera3d = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
@@ -181,10 +182,21 @@ function resizeBackingStore(){
     camera3d.top = -nextHeight / 2;
     camera3d.bottom = nextHeight / 2;
     camera3d.updateProjectionMatrix();
+    
+    // Position both canvases correctly based on host element padding
+    const styles = window.getComputedStyle(hostElement);
+    const px = parseFloat(styles.paddingLeft) || 0;
+    const py = parseFloat(styles.paddingTop) || 0;
+    canvas.style.left = `${px}px`;
+    canvas.style.top = `${py}px`;
+    
     uiCanvas.width = Math.round(nextWidth * dpr);
     uiCanvas.height = Math.round(nextHeight * dpr);
     uiCanvas.style.width = `${nextWidth}px`;
     uiCanvas.style.height = `${nextHeight}px`;
+    uiCanvas.style.left = `${px}px`;
+    uiCanvas.style.top = `${py}px`;
+    
     uiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     uiCtx.imageSmoothingEnabled = true;
 }
@@ -236,7 +248,6 @@ function drawLabel(text,x,y,fillStyle,fontSize){
     uiCtx.strokeStyle="#07111d";
     uiCtx.lineWidth=Math.max(3,fontSize*0.34);
     uiCtx.strokeText(text,x,y);
-    uiCtx.fillText(text,x,y);
     uiCtx.fillStyle=fillStyle;
     uiCtx.fillText(text,x,y);
 }
@@ -251,11 +262,13 @@ function getThreeObject(id, type, creator) {
 
 function renderPlanet(planet,isLocalPlayer){
     const x=worldToScreenX(planet.x),y=worldToScreenY(planet.y),screenRadius=Math.max(2,worldToScreenSize(planet.radius)),sprite=getPlanetSprite(planet,isLocalPlayer),auraRadius=Math.max(screenRadius+2,sprite.auraRadius*zoom);
+    
     const obj = getThreeObject(planet.id, "planet", () => {
         const texture = new THREE.CanvasTexture(sprite.node);
         const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
         return new THREE.Mesh(cache.geometries.plane, material);
     });
+    
     if(!isCircleVisible(x,y,auraRadius)) {
         obj.visible = false;
     } else {
@@ -267,6 +280,7 @@ function renderPlanet(planet,isLocalPlayer){
         obj.position.set(planet.x, planet.y, 5);
         obj.scale.set(sprite.size, sprite.size, 1);
     }
+    
     const noseX=x+Math.cos(planet.angle)*(screenRadius+worldToScreenSize(8)),noseY=y+Math.sin(planet.angle)*(screenRadius+worldToScreenSize(8)),leftX=x+Math.cos(planet.angle+2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),leftY=y+Math.sin(planet.angle+2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),rightX=x+Math.cos(planet.angle-2.4)*Math.max(2,screenRadius-worldToScreenSize(4)),rightY=y+Math.sin(planet.angle-2.4)*Math.max(2,screenRadius-worldToScreenSize(4));
     uiCtx.strokeStyle=isLocalPlayer?"#ffffff":"#c9d6e2";
     uiCtx.lineWidth=Math.max(1.25,isLocalPlayer?worldToScreenSize(3):worldToScreenSize(2));
@@ -276,6 +290,7 @@ function renderPlanet(planet,isLocalPlayer){
     uiCtx.lineTo(rightX,rightY);
     uiCtx.closePath();
     uiCtx.stroke();
+    
     const labelY=y-screenRadius-Math.max(10,worldToScreenSize(12));
     if(labelY>-VISIBILITY_MARGIN&&labelY<viewport.height+VISIBILITY_MARGIN){
         drawLabel(labelForPlanet(planet,isLocalPlayer),x,labelY,isLocalPlayer?"#ffffff":(planet.team==="enemy"?"#ffd7bf":"#d7e6f6"),Math.max(11,Math.min(18,12+zoom*3.5)));
@@ -285,6 +300,7 @@ function renderPlanet(planet,isLocalPlayer){
 function drawBackground(){
     const layers=cache.backgroundLayers;
     if(layers.length===0)return;
+    
     const parallaxDepths=[0.08,0.16,0.28];
     for(let index=0;index<layers.length;index+=1){
         const layer=layers[index],depth=parallaxDepths[index]||0.1;
@@ -311,6 +327,7 @@ function renderGuides(){
         uiCtx.moveTo(worldToScreenX(renderedPlayer.x),worldToScreenY(renderedPlayer.y));
         uiCtx.lineTo(pointerState.x,pointerState.y);
         uiCtx.stroke();
+        
         uiCtx.beginPath();
         uiCtx.strokeStyle="rgba(140,240,255,0.45)";
         uiCtx.lineWidth=1.5;
@@ -329,20 +346,25 @@ function renderGuides(){
 function render(){
     buildBackgroundLayers();
     const frameStart=perfNow();
+    
     uiCtx.clearRect(0,0,viewport.width,viewport.height);
+    
     camera3d.position.x = camera.x;
     camera3d.position.y = camera.y;
     camera3d.zoom = zoom;
     camera3d.updateProjectionMatrix();
+
     const backgroundStart=perfNow();
     drawBackground();
     const backgroundEnd=perfNow();
+
     buildArena();
     buildSun();
     const arenaDrawStart=perfNow();
     if (cache.arena) {
         cache.arena.position.set(0, 0, 1);
     }
+    
     const suns = activeSuns();
     suns.forEach((sun, index) => {
         const id = `sun-${index}`;
@@ -359,8 +381,10 @@ function render(){
         }
         obj.visible = true;
     });
+
     const arenaDrawEnd=perfNow();
     const entitiesStart=perfNow();
+    
     (networkState.asteroids||[]).forEach((asteroid, index) => {
         const id = `asteroid-${asteroid.id || index}`;
         const obj = getThreeObject(id, "asteroid", () => {
@@ -372,6 +396,7 @@ function render(){
         obj.material.color.set(asteroid.color);
         obj.visible = isCircleVisible(worldToScreenX(asteroid.x), worldToScreenY(asteroid.y), worldToScreenSize(asteroid.radius));
     });
+
     networkState.rocks.forEach((rock, index) => {
         const id = `rock-${rock.id || index}`;
         const obj = getThreeObject(id, "rock", () => {
@@ -383,10 +408,13 @@ function render(){
         obj.material.color.set(rock.color);
         obj.visible = isCircleVisible(worldToScreenX(rock.x), worldToScreenY(rock.y), worldToScreenSize(rock.radius));
     });
+
     for (const player of networkState.players) renderPlanet(renderStateForPlanet(player,player.id===networkState.playerId),player.id===networkState.playerId);
     for (const enemy of networkState.enemies) renderPlanet(enemy,false);
+
     const entitiesEnd=perfNow();
     const effectsStart=perfNow();
+
     (networkState.explosions||[]).forEach((explosion, index) => {
         const id = `explosion-${explosion.id || index}`;
         const obj = getThreeObject(id, "explosion", () => {
@@ -401,6 +429,7 @@ function render(){
         obj.material.opacity = alpha * 0.9;
         obj.visible = isCircleVisible(worldToScreenX(explosion.x), worldToScreenY(explosion.y), worldToScreenSize(radius));
     });
+
     const currentIds = new Set([
         ...suns.map((_, i) => `sun-${i}`),
         ...(networkState.asteroids||[]).map((a, i) => `asteroid-${a.id || i}`),
@@ -409,12 +438,16 @@ function render(){
         ...networkState.enemies.map(e => e.id),
         ...(networkState.explosions||[]).map((e, i) => `explosion-${e.id || i}`)
     ]);
+    
     cache.threeObjects.forEach((obj, id) => {
         if (!currentIds.has(id)) obj.visible = false;
     });
+
     renderGuides();
     const effectsEnd=perfNow();
+    
     renderer.render(scene, camera3d);
+
     const uiStart=perfNow();
     updateUi();
     const uiEnd=perfNow();
