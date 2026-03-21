@@ -32,7 +32,7 @@ class GameManager {
         if (this.players[token]) return;
         this.engine.addPlayer(token, client.name);
         this.players[token] = { client, lastSnapshot: null };
-        if (!this.tick) this.start();
+        if (!this.tickInterval) this.start();
         this.sendUpdateToAll();
     }
 
