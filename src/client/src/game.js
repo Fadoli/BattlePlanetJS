@@ -503,11 +503,15 @@ setDelta(packet){
     baseState = cloneState(baseState);
     applyDeltaToState(baseState, delta);
     baseState.sun = baseState.suns[0];
+    if (meta && meta.playerId !== undefined) {
+        baseState.playerId = meta.playerId;
+    }
     const snapshot = cloneState(baseState);
     if (meta) {
         if (meta.serverTime !== undefined) snapshot.serverTime = meta.serverTime;
         if (meta.tickNumber !== undefined) snapshot.tickNumber = meta.tickNumber;
         if (meta.status !== undefined) snapshot.status = meta.status;
+        if (meta.playerId !== undefined) snapshot.playerId = meta.playerId;
     }
     const offsetSample = Date.now() - snapshot.serverTime;
     if(serverOffsetEstimate===null)serverOffsetEstimate=offsetSample;else serverOffsetEstimate=Math.min(serverOffsetEstimate,offsetSample);

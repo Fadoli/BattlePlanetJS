@@ -85,9 +85,7 @@ class Client {
         this.lobby.sendChat(`${this.name} joined the game`);
 
         this.lobby.addPlayer(this);
-        
-
-        this.socket.emit('lobbyJoin', this.lobby.uuid);
+        // The lobby will send 'lobbyJoin' confirmation to the client
     }
 
     /**

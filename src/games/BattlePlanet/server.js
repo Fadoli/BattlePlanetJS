@@ -45,7 +45,7 @@ class GameManager {
         else this.sendUpdateToAll();
     }
 
-    handleGameInput(client, payload) {
+    handleInput(client, payload) {
         this.engine.setInput(client.token, payload);
     }
 
@@ -77,7 +77,7 @@ class GameManager {
             const full = forceFullPeriodic || player.lastSnapshot === null;
             let payload;
             if (full) {
-                payload = { full: true, state: snapshot };
+                payload = { full: true, state: { ...snapshot, playerId: token } };
             } else {
                 const viewDistance = this.arena.worldRadius * 1.5;
                 const visibleIds = this.engine.getVisibleEntityIds(token, viewDistance);
@@ -88,7 +88,8 @@ class GameManager {
                     meta: {
                         serverTime: snapshot.serverTime,
                         tickNumber: snapshot.tickNumber,
-                        status: snapshot.status
+                        status: snapshot.status,
+                        playerId: token // include playerId in meta for reference
                     }
                 };
             }

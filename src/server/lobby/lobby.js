@@ -44,6 +44,8 @@ class Lobby {
         }
         this.players[player.token] = player;
         this.game.addPlayer(player);
+        // Notify client they have successfully joined the lobby
+        player.socket.emit('lobbyJoin', this.uuid);
     }
 
     /**
