@@ -5,6 +5,11 @@ const TICKS_PER_SECOND = 60;
 const TICK_RATE = 1000 / TICKS_PER_SECOND;
 const ROUND_RESET_MS = 2500;
 
+// Network throttling: send updates at lower frequency than simulation
+const NETWORK_UPDATE_RATE = 30; // Hz - sends per second over network
+const NETWORK_TICK_RATIO = TICKS_PER_SECOND / NETWORK_UPDATE_RATE; // how many sim ticks per network send
+const FULL_STATE_TICKS = TICKS_PER_SECOND; // full state every 1 second
+
 class GameManager {
     constructor(options = {}) {
         this.uuid = uuidv4();
@@ -15,6 +20,7 @@ class GameManager {
         this.resetTimeout = undefined;
         this.players = {}; // token -> { client, lastSnapshot }
         this.engine = new GameEngine(this.settings);
+        this.networkSendTicks = NETWORK_TICK_RATIO;
     }
 
     sanitizeSettings(settings = {}) {
@@ -62,7 +68,10 @@ class GameManager {
     tick() {
         const dt = 1 / TICKS_PER_SECOND;
         this.engine.update(dt);
-        this.sendUpdateToAll();
+        // Throttle network updates to reduce bandwidth and CPU
+        if (this.engine.tickNumber % this.networkSendTicks === 0) {
+            this.sendUpdateToAll();
+        }
         if (this.engine.status === 'roundEnd' && !this.resetTimeout) {
             this.resetTimeout = setTimeout(() => this.resetRound(), ROUND_RESET_MS);
         }
@@ -71,7 +80,7 @@ class GameManager {
     sendUpdateToAll() {
         const snapshot = this.engine.getSnapshot();
         const tick = this.engine.tickNumber;
-        const forceFullPeriodic = tick % 30 === 0; // full state every 30 ticks (0.5 sec at 60Hz)
+        const forceFullPeriodic = tick % FULL_STATE_TICKS === 0; // full state every 1 second
         for (const token of Object.keys(this.players)) {
             const player = this.players[token];
             const full = forceFullPeriodic || player.lastSnapshot === null;
@@ -94,7 +103,7 @@ class GameManager {
                 };
             }
             player.client.sendGameState(payload);
-            player.lastSnapshot = JSON.parse(JSON.stringify(snapshot));
+            player.lastSnapshot = snapshot;
         }
     }
 
