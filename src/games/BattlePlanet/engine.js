@@ -145,6 +145,11 @@ function resolvePlanetCollision(a, b) {
     const impulse = Math.max(45.0, (-2.2 * relVel) / ((1/massA) + (1/massB)));
     a.vx -= (impulse * nx) / massA; a.vy -= (impulse * ny) / massA;
     b.vx += (impulse * nx) / massB; b.vy += (impulse * ny) / massB;
+
+    // Increase instability on collision
+    increaseModifier(a, PLANET_COLLISION_MODIFIER_GAIN);
+    increaseModifier(b, PLANET_COLLISION_MODIFIER_GAIN);
+
     return { aId: a.id, bId: b.id, impulse };
 }
 
@@ -198,10 +203,10 @@ const ARENA_PRESETS = {
 };
 
 const AI_PRESETS = {
-    easy: { thinkIntervalTicks: 8, turnRate: 0.028, cooldownMult: 1.25, attackBias: 0.28, safetyBias: 1.18 },
-    standard: { thinkIntervalTicks: 5, turnRate: 0.04, cooldownMult: 0.9, attackBias: 0.45, safetyBias: 1 },
-    hard: { thinkIntervalTicks: 3, turnRate: 0.058, cooldownMult: 0.6, attackBias: 0.65, safetyBias: 0.9 },
-    ace: { thinkIntervalTicks: 1, turnRate: 0.085, cooldownMult: 0.4, attackBias: 0.9, safetyBias: 0.82 },
+    easy: { thinkIntervalTicks: 4, turnRate: 0.028, cooldownMult: 1.1, attackBias: 0.38, safetyBias: 1.18 },
+    standard: { thinkIntervalTicks: 2, turnRate: 0.04, cooldownMult: 0.75, attackBias: 0.6, safetyBias: 1 },
+    hard: { thinkIntervalTicks: 1, turnRate: 0.058, cooldownMult: 0.5, attackBias: 0.75, safetyBias: 0.9 },
+    ace: { thinkIntervalTicks: 1, turnRate: 0.085, cooldownMult: 0.35, attackBias: 0.95, safetyBias: 0.82 },
 };
 
 // Colors
@@ -672,13 +677,13 @@ class GameEngine {
         if (enemy.shootCooldown <= 0) {
             if (sunDist < dangerLim * preset.safetyBias || otherSunDist < dangerLim * 0.94 * preset.safetyBias || Math.abs(radVel) > 2.5) {
                 this.ejectRock(enemy, enemy.angle + Math.PI, 0.82, 8.4, 7, enemy.color);
-                enemy.shootCooldown = 0.52 * preset.cooldownMult;
+                enemy.shootCooldown = 0.42 * preset.cooldownMult;
             } else if (centerDist > farLim) {
                 this.ejectRock(enemy, enemy.angle + Math.PI, 0.75, 7.6, 7, enemy.color);
-                enemy.shootCooldown = 0.68 * preset.cooldownMult;
-            } else if (playerDist < this.arena.worldRadius * 0.42 && think) {
+                enemy.shootCooldown = 0.52 * preset.cooldownMult;
+            } else if (playerDist < this.arena.worldRadius * 0.55) {
                 this.ejectRock(enemy, interceptAng, 0.52, 7.9, 7, enemy.color);
-                enemy.shootCooldown = 0.8 * preset.cooldownMult;
+                enemy.shootCooldown = 0.6 * preset.cooldownMult;
             }
         }
     }

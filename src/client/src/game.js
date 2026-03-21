@@ -3,7 +3,6 @@
 const DEFAULT_SIZE = { width: 1024, height: 700 };
 const RESIZE_THROTTLE_MS = 100;
 const CAMERA_LERP = 0.12;
-const CAMERA_SUN_WEIGHT = 0.08;
 const MIN_ZOOM = 0.42;
 const MAX_ZOOM = 1.45;
 const DEFAULT_ZOOM = 0.52;
@@ -50,12 +49,12 @@ const uiCtx = uiCanvas.getContext("2d");
 const audioState = { context: null, masterGain: null, playedExplosions: new Set() };
 const cache = {
     dpr: 1,
-    backgroundLayers: [],
+    stars: null,
+    starTexture: null,
     arena: null,
     sun: null,
     arenaKey: "",
     sunKey: "",
-    backgroundKey: "",
     planetSprites: new Map(),
     threeObjects: new Map(),
     // Shared geometries for performance
@@ -170,39 +169,119 @@ function randomFactory(seed) {
         return state / 4294967296;
     };
 }
-function buildBackgroundLayers() {
-    const key = `${Math.round(viewport.width)}x${Math.round(viewport.height)}`;
-    if (key === cache.backgroundKey && cache.backgroundLayers.length === 3) return;
-    cache.backgroundKey = key;
+function buildStarfield() {
+    const STAR_COUNT = 2000;
+    const WORLD_RADIUS = networkState.worldRadius || 1750;
+    const SPREAD = WORLD_RADIUS * 3; // Spread stars well beyond the arena
 
-    // Cleanup old objects
-    cache.backgroundLayers.forEach(layer => {
-        scene.remove(layer);
-        if (layer.material.map) layer.material.map.dispose();
-        layer.material.dispose();
-    });
+    // Create star texture if not exists
+    if (!cache.starTexture) {
+        const size = 64;
+        const canvas = makeCanvas(size, size);
+        const ctx = canvas.getContext("2d");
+        const center = size / 2;
+        const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+        gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+        gradient.addColorStop(0.2, "rgba(255, 255, 255, 0.8)");
+        gradient.addColorStop(0.5, "rgba(255, 255, 255, 0.3)");
+        gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+        cache.starTexture = new THREE.CanvasTexture(canvas);
+    }
 
-    const width = Math.max(1, Math.round(viewport.width)), height = Math.max(1, Math.round(viewport.height)),
-        layerConfigs = [
-            { seed: 42, count: 110, minRadius: 0.8, maxRadius: 1.8, alphaMin: 0.14, alphaMax: 0.28, color: "255,255,255" },
-            { seed: 84, count: 75, minRadius: 1.2, maxRadius: 2.4, alphaMin: 0.12, alphaMax: 0.24, color: "122,205,255" },
-            { seed: 126, count: 34, minRadius: 1.8, maxRadius: 3.6, alphaMin: 0.08, alphaMax: 0.18, color: "255,212,140" }
-        ];
+    // Remove existing stars
+    if (cache.stars) {
+        scene.remove(cache.stars);
+        cache.stars.geometry.dispose();
+        cache.stars.material.dispose();
+    }
 
-    cache.backgroundLayers = layerConfigs.map((config, index) => {
-        const node = makeCanvas(width, height), g = node.getContext("2d"), random = randomFactory(config.seed);
-        for (let i = 0; i < config.count; i += 1) {
-            fillCircle(g, random() * width, random() * height, config.minRadius + random() * (config.maxRadius - config.minRadius), `rgba(${config.color},${config.alphaMin + random() * (config.alphaMax - config.alphaMin)})`);
+    const positions = new Float32Array(STAR_COUNT * 3);
+    const basePositions = new Float32Array(STAR_COUNT * 2); // Store base X,Y for parallax
+    const parallaxFactors = new Float32Array(STAR_COUNT);
+    const colors = new Float32Array(STAR_COUNT * 3);
+    const sizes = new Float32Array(STAR_COUNT);
+
+    const random = randomFactory(12345); // Fixed seed for consistency
+
+    for (let i = 0; i < STAR_COUNT; i++) {
+        const i3 = i * 3;
+        const baseX = (random() - 0.5) * SPREAD * 2;
+        const baseY = (random() - 0.5) * SPREAD * 2;
+        const depth = random(); // 0 to 1, 0 = far, 1 = near
+
+        // Z position: far stars at more negative Z, near stars at less negative Z
+        const z = -200 - depth * 600; // Range -200 to -800, all in front of camera
+
+        positions[i3] = baseX; // will be updated per frame
+        positions[i3 + 1] = baseY;
+        positions[i3 + 2] = z;
+
+        basePositions[i * 2] = baseX;
+        basePositions[i * 2 + 1] = baseY;
+        parallaxFactors[i] = 0.05 + depth * 0.3; // far stars move less
+
+        // Color variation: white to blue/yellow tints
+        const colorType = random();
+        let r, g, b;
+        if (colorType < 0.6) {
+            // White
+            r = 1; g = 1; b = 1;
+        } else if (colorType < 0.8) {
+            // Blue tint
+            r = 0.8; g = 0.9; b = 1;
+        } else {
+            // Yellow tint
+            r = 1; g = 0.95; b = 0.8;
         }
+        colors[i3] = r;
+        colors[i3 + 1] = g;
+        colors[i3 + 2] = b;
 
-        const texture = new THREE.CanvasTexture(node);
-        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide });
-        const mesh = new THREE.Mesh(cache.geometries.plane, material);
-        mesh.position.z = -10 + index;
-        scene.add(mesh);
-        return mesh;
+        sizes[i] = 0.5 + random() * 1.5;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    // Store base positions and parallax factors for update loop
+    geometry.userData = { basePositions, parallaxFactors };
+
+    const material = new THREE.PointsMaterial({
+        size: 2,
+        map: cache.starTexture,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true
     });
+
+    cache.stars = new THREE.Points(geometry, material);
+    scene.add(cache.stars);
+}
+
+function updateStarfield() {
+    if (!cache.stars) return;
+
+    const positions = cache.stars.geometry.attributes.position.array;
+    const { basePositions, parallaxFactors } = cache.stars.geometry.userData;
+
+    for (let i = 0; i < basePositions.length / 2; i++) {
+        const i3 = i * 3;
+        const pf = parallaxFactors[i];
+        // Star world position = base + (1 - pf) * camera
+        // This creates parallax: screen position = (base - pf * camera) * zoom
+        positions[i3] = basePositions[i * 2] + (1 - pf) * camera.x;
+        positions[i3 + 1] = basePositions[i * 2 + 1] + (1 - pf) * camera.y;
+        // Z stays constant
+    }
+
+    cache.stars.geometry.attributes.position.needsUpdate = true;
 }
 function buildArena() {
     const key = `${Math.round(networkState.worldRadius)}`;
@@ -632,9 +711,6 @@ function syncLocalPlayerVisual() { const player = getPlayer(); if (!player || pl
 function renderStateForPlanet(planet, isLocalPlayer) { if (!isLocalPlayer || !localPlayerVisual || localPlayerVisual.id !== planet.id) return planet; return { ...planet, x: localPlayerVisual.x, y: localPlayerVisual.y, angle: localPlayerVisual.angle, radius: localPlayerVisual.radius, modifier: localPlayerVisual.modifier }; }
 function activeSuns() { return networkState.suns && networkState.suns.length > 0 ? networkState.suns : [networkState.sun]; }
 function primarySunRadius() { return ((networkState.suns && networkState.suns[0]) || networkState.sun).radius; }
-function nearestSunFor(body) { let best = activeSuns()[0], bestDistance = distanceBetween(body, best); for (const sun of activeSuns()) { const distance = distanceBetween(body, sun); if (distance < bestDistance) { best = sun; bestDistance = distance; } } return best; }
-function distanceFromCenter(body) { return Math.sqrt((body.x * body.x) + (body.y * body.y)); }
-function distanceBetween(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
 function getPlayer() { return networkState.players.find((player) => player.id === networkState.playerId); }
 function updateCamera() {
     const player = getPlayer();
@@ -654,14 +730,9 @@ function updateCamera() {
 
     if (!focus) return;
 
-    const anchorSun = nearestSunFor(focus);
-    const targetX =
-        focus.x * (1 - CAMERA_SUN_WEIGHT) + anchorSun.x * CAMERA_SUN_WEIGHT;
-    const targetY =
-        focus.y * (1 - CAMERA_SUN_WEIGHT) + anchorSun.y * CAMERA_SUN_WEIGHT;
-
-    camera.x += (targetX - camera.x) * CAMERA_LERP;
-    camera.y += (targetY - camera.y) * CAMERA_LERP;
+    // Direct camera follow without sun weighting
+    camera.x += (focus.x - camera.x) * CAMERA_LERP;
+    camera.y += (focus.y - camera.y) * CAMERA_LERP;
 }
 function updateUi() {
     const aliveEnemies = networkState.enemies.filter((enemy) => enemy.alive !== false).length;
@@ -835,56 +906,9 @@ function renderPlanet(planet, isLocalPlayer) {
     }
 }
 
-function drawBackground() {
-    const layers = cache.backgroundLayers;
-    if (layers.length === 0) return;
 
-    const parallaxDepths = [0.08, 0.16, 0.28];
-    for (let index = 0; index < layers.length; index += 1) {
-        const layer = layers[index];
-        const depth = parallaxDepths[index] || 0.1;
-        layer.position.set(camera.x, camera.y, layer.position.z);
-        layer.scale.set(viewport.width / zoom, viewport.height / zoom, 1);
-        const tex = layer.material.map;
-        tex.offset.set((camera.x * depth) / viewport.width, -(camera.y * depth) / viewport.height);
-    }
-}
-
-function renderGuides() {
-    const player = getPlayer();
-    if (!player) return;
-    const renderedPlayer = renderStateForPlanet(player, true);
-    const anchorSun = nearestSunFor(player);
-    uiCtx.strokeStyle = "rgba(255,209,102,0.28)";
-    uiCtx.lineWidth = Math.max(1, worldToScreenSize(1.5));
-    uiCtx.beginPath();
-    uiCtx.moveTo(worldToScreenX(renderedPlayer.x), worldToScreenY(renderedPlayer.y));
-    uiCtx.lineTo(worldToScreenX(anchorSun.x), worldToScreenY(anchorSun.y));
-    uiCtx.stroke();
-    if (player.alive !== false && networkState.status === "playing") {
-        uiCtx.strokeStyle = "rgba(140,240,255,0.45)";
-        uiCtx.beginPath();
-        uiCtx.moveTo(worldToScreenX(renderedPlayer.x), worldToScreenY(renderedPlayer.y));
-        uiCtx.lineTo(pointerState.x, pointerState.y);
-        uiCtx.stroke();
-
-        uiCtx.beginPath();
-        uiCtx.strokeStyle = "rgba(140,240,255,0.45)";
-        uiCtx.lineWidth = 1.5;
-        uiCtx.arc(pointerState.x, pointerState.y, 8, 0, Math.PI * 2);
-        uiCtx.stroke();
-    }
-    const playerDistance = distanceFromCenter(player);
-    if (playerDistance > networkState.worldRadius * 0.82) {
-        const intensity = Math.min(1, (playerDistance - networkState.worldRadius * 0.82) / (networkState.worldRadius * 0.18));
-        uiCtx.strokeStyle = `rgba(255,107,107,${0.18 + intensity * 0.26})`;
-        uiCtx.lineWidth = 14;
-        uiCtx.strokeRect(7, 7, viewport.width - 14, viewport.height - 14);
-    }
-}
 
 function render() {
-    buildBackgroundLayers();
     const frameStart = perfNow();
 
     uiCtx.clearRect(0, 0, viewport.width, viewport.height);
@@ -895,7 +919,7 @@ function render() {
     camera3d.updateProjectionMatrix();
 
     const backgroundStart = perfNow();
-    drawBackground();
+    updateStarfield();
     const backgroundEnd = perfNow();
 
     buildArena();
@@ -983,7 +1007,6 @@ function render() {
         if (!currentIds.has(id)) obj.visible = false;
     });
 
-    renderGuides();
     const effectsEnd = perfNow();
 
     renderer.render(scene, camera3d);
@@ -1011,7 +1034,7 @@ function frame(now) {
 }
 
 const battlePlanetGame = {
-    start() { if (isRunning) return; isRunning = true; lastRenderAt = 0; animationFrame = window.requestAnimationFrame(frame); }, stop() { isRunning = false; if (animationFrame !== null) { window.cancelAnimationFrame(animationFrame); animationFrame = null; } }, resizeToContainer() { if (Date.now() - resizeTimestamp < RESIZE_THROTTLE_MS) return; resizeTimestamp = Date.now(); resizeBackingStore(); buildBackgroundLayers(); canvas.style.display = "block"; canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`; render(); }, setInputSender(sender) { inputSender = sender; }, setFullState(fullState) {
+    start() { if (isRunning) return; isRunning = true; lastRenderAt = 0; animationFrame = window.requestAnimationFrame(frame); }, stop() { isRunning = false; if (animationFrame !== null) { window.cancelAnimationFrame(animationFrame); animationFrame = null; } }, resizeToContainer() { if (Date.now() - resizeTimestamp < RESIZE_THROTTLE_MS) return; resizeTimestamp = Date.now(); resizeBackingStore(); buildStarfield(); canvas.style.display = "block"; canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`; render(); }, setInputSender(sender) { inputSender = sender; }, setFullState(fullState) {
         baseState = cloneState(fullState);
         snapshotBuffer = [];
         const snapshot = cloneState(fullState);
@@ -1022,7 +1045,7 @@ const battlePlanetGame = {
         updateRoundHistory(networkState);
         buildArena(); buildSun();
         const player = getPlayer(); if (!player) localPlayerVisual = null;
-        if (player && !hasInitialCamera) { const anchorSun = nearestSunFor(player); camera.x = player.x * (1 - CAMERA_SUN_WEIGHT) + anchorSun.x * CAMERA_SUN_WEIGHT; camera.y = player.y * (1 - CAMERA_SUN_WEIGHT) + anchorSun.y * CAMERA_SUN_WEIGHT; hasInitialCamera = true; }
+        if (player && !hasInitialCamera) { camera.x = player.x; camera.y = player.y; hasInitialCamera = true; }
         render();
     },
     setDelta(packet) {
@@ -1071,12 +1094,8 @@ const battlePlanetGame = {
         cache.threeObjects.clear();
         if (cache.arena) { scene.remove(cache.arena); cache.arena = null; }
         if (cache.sun) { scene.remove(cache.sun); cache.sun = null; }
-        cache.backgroundLayers.forEach(layer => scene.remove(layer));
-        cache.backgroundLayers = [];
-        cache.backgroundKey = "";
-        cache.arenaKey = "";
-        cache.sunKey = "";
-        buildBackgroundLayers();
+        if (cache.stars) { scene.remove(cache.stars); cache.stars = null; }
+        buildStarfield();
         buildArena();
         buildSun();
         render();
@@ -1084,7 +1103,7 @@ const battlePlanetGame = {
 };
 
 function init() {
-    buildBackgroundLayers();
+    buildStarfield();
     buildArena();
     buildSun();
     attachInputListeners();
