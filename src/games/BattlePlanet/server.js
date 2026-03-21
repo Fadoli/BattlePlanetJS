@@ -8,7 +8,7 @@ const ROUND_RESET_MS = 2500;
 // Network throttling: send updates at lower frequency than simulation
 const NETWORK_UPDATE_RATE = 30; // Hz - sends per second over network
 const NETWORK_TICK_RATIO = TICKS_PER_SECOND / NETWORK_UPDATE_RATE; // how many sim ticks per network send
-const FULL_STATE_TICKS = TICKS_PER_SECOND; // full state every 1 second
+const FULL_STATE_TICKS = TICKS_PER_SECOND * 5; // full state every 5 seconds
 
 class GameManager {
     constructor(options = {}) {

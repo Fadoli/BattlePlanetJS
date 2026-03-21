@@ -92,6 +92,9 @@ let resolvedRoundStatus = null;
 let frameCap = loadFrameCap();
 let localPlayerVisual = null;
 let lastInputSendAt = 0;
+// Network latency tracking for adaptive interpolation
+let latencySamples = []; // recent RTT samples in ms
+const LATENCY_SAMPLE_COUNT = 20;
 
 function emptyState() {
     return {
@@ -119,6 +122,33 @@ function loadFrameCap() {
     );
     return FRAME_CAP_OPTIONS.includes(stored) ? stored : DEFAULT_FRAME_CAP;
 }
+
+// Compute adaptive interpolation delay based on measured network latency
+function getInterpolationDelay() {
+    if (latencySamples.length < 5) return INTERPOLATION_DELAY_MS; // fallback to default
+
+    // Copy and sort samples
+    const sorted = [...latencySamples].sort((a, b) => a - b);
+    // Use 75th percentile (p75) to cover most latency spikes
+    const p75Index = Math.floor(sorted.length * 0.75);
+    const p75 = sorted[p75Index];
+
+    // Target delay: p75 * 1.5 + small buffer, clamped to reasonable range
+    // This gives ~2-3x the typical one-way delay including jitter
+    return Math.min(250, Math.max(50, Math.round(p75 * 1.5 + 20)));
+}
+
+// Record a latency sample from a received snapshot (clientTime - serverTime)
+function recordLatencySample(snapshot) {
+    if (!snapshot || !snapshot.serverTime) return;
+    const now = Date.now();
+    const rawDelay = now - snapshot.serverTime;
+    latencySamples.push(rawDelay);
+    if (latencySamples.length > LATENCY_SAMPLE_COUNT) {
+        latencySamples.shift();
+    }
+}
+
 function setFrameCap(nextCap) {
     if (!FRAME_CAP_OPTIONS.includes(nextCap)) return;
     frameCap = nextCap;
@@ -495,7 +525,16 @@ function interpolateList(previousList, nextList, alpha) {
     const result = [];
 
     for (const id of ids) {
-        result.push(interpolateEntity(previousMap.get(id), nextMap.get(id), alpha));
+        const prev = previousMap.get(id);
+        const next = nextMap.get(id);
+        // If entity exists only in previous (removed) and we're at or past next snapshot time, skip it
+        if (!next && alpha >= 1) continue;
+        if (!prev || !next) {
+            // One-sided: just use whichever exists (no interpolation)
+            result.push({ ...(next || prev) });
+        } else {
+            result.push(interpolateEntity(prev, next, alpha));
+        }
     }
     return result;
 }
@@ -505,7 +544,7 @@ function interpolatedState() {
         return cloneState(snapshotBuffer[snapshotBuffer.length - 1]);
     }
 
-    const renderServerTime = Date.now() - serverOffsetEstimate - INTERPOLATION_DELAY_MS;
+    const renderServerTime = Date.now() - serverOffsetEstimate - getInterpolationDelay();
     let previous = snapshotBuffer[0];
     let next = snapshotBuffer[snapshotBuffer.length - 1];
 
@@ -1035,12 +1074,34 @@ function frame(now) {
 
 const battlePlanetGame = {
     start() { if (isRunning) return; isRunning = true; lastRenderAt = 0; animationFrame = window.requestAnimationFrame(frame); }, stop() { isRunning = false; if (animationFrame !== null) { window.cancelAnimationFrame(animationFrame); animationFrame = null; } }, resizeToContainer() { if (Date.now() - resizeTimestamp < RESIZE_THROTTLE_MS) return; resizeTimestamp = Date.now(); resizeBackingStore(); buildStarfield(); canvas.style.display = "block"; canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`; render(); }, setInputSender(sender) { inputSender = sender; }, setFullState(fullState) {
-        baseState = cloneState(fullState);
-        snapshotBuffer = [];
+        // Use fullState directly as mutable base (no clone)
+        baseState = fullState;
+
+        // Record latency
         const snapshot = cloneState(fullState);
+        recordLatencySample(snapshot);
+
         const offsetSample = Date.now() - snapshot.serverTime;
         if (serverOffsetEstimate === null) serverOffsetEstimate = offsetSample; else serverOffsetEstimate = Math.min(serverOffsetEstimate, offsetSample);
-        snapshotBuffer.push(snapshot);
+        
+        // Keep only buffered snapshots that are older than this full state for continuity
+        snapshotBuffer = snapshotBuffer.filter(s => s.tickNumber < snapshot.tickNumber);
+        
+        // Insert the new snapshot in order
+        const last = snapshotBuffer[snapshotBuffer.length - 1];
+        if (!last || snapshot.serverTime >= last.serverTime) {
+            snapshotBuffer.push(snapshot);
+        } else {
+            // Out-of-order insertion (rare)
+            let i = 0;
+            while (i < snapshotBuffer.length && snapshotBuffer[i].serverTime < snapshot.serverTime) i++;
+            snapshotBuffer.splice(i, 0, snapshot);
+        }
+        
+        // Trim buffer if too large
+        if (snapshotBuffer.length > MAX_SNAPSHOT_BUFFER) {
+            snapshotBuffer = snapshotBuffer.slice(snapshotBuffer.length - MAX_SNAPSHOT_BUFFER);
+        }
         networkState = interpolatedState();
         updateRoundHistory(networkState);
         buildArena(); buildSun();
@@ -1051,7 +1112,7 @@ const battlePlanetGame = {
     setDelta(packet) {
         if (!baseState) return;
         const { delta, meta } = packet;
-        baseState = cloneState(baseState);
+        // Mutate baseState directly - no initial clone
         applyDeltaToState(baseState, delta);
         baseState.sun = baseState.suns[0];
         if (meta && meta.playerId !== undefined) {
@@ -1064,12 +1125,26 @@ const battlePlanetGame = {
             if (meta.status !== undefined) snapshot.status = meta.status;
             if (meta.playerId !== undefined) snapshot.playerId = meta.playerId;
         }
+        // Record network latency from this snapshot
+        recordLatencySample(snapshot);
+
         const offsetSample = Date.now() - snapshot.serverTime;
         if (serverOffsetEstimate === null) serverOffsetEstimate = offsetSample; else serverOffsetEstimate = Math.min(serverOffsetEstimate, offsetSample);
+
         const existingIndex = snapshotBuffer.findIndex((entry) => entry.tickNumber === snapshot.tickNumber);
-        if (existingIndex >= 0) snapshotBuffer[existingIndex] = snapshot; else snapshotBuffer.push(snapshot);
-        snapshotBuffer.sort((left, right) => left.serverTime - right.serverTime);
-        if (snapshotBuffer.length > MAX_SNAPSHOT_BUFFER) snapshotBuffer = snapshotBuffer.slice(snapshotBuffer.length - MAX_SNAPSHOT_BUFFER);
+        if (existingIndex >= 0) {
+            snapshotBuffer[existingIndex] = snapshot;
+        } else {
+            // WebSocket guarantees order, so we can just push
+            snapshotBuffer.push(snapshot);
+        }
+        // No sort needed due to monotonic delivery
+
+        // Trim from front if buffer too large
+        if (snapshotBuffer.length > MAX_SNAPSHOT_BUFFER) {
+            snapshotBuffer = snapshotBuffer.slice(snapshotBuffer.length - MAX_SNAPSHOT_BUFFER);
+        }
+
         networkState = interpolatedState();
         updateRoundHistory(networkState);
         render();
