@@ -66,7 +66,7 @@ const cache={
     }
 };
 const perfState={frameCount:0,lastUpdatedAt:0,sampleStartedAt:0,totals:{frame:0,background:0,arena:0,entities:0,effects:0,ui:0},snapshot:null};
-let viewport={width:DEFAULT_SIZE.width,height:DEFAULT_SIZE.height,centerX:DEFAULT_SIZE.width/2,centerY:DEFAULT_SIZE.height/2};
+let viewport={width:DEFAULT_SIZE.width,height:DEFAULT_SIZE.height,centerX:DEFAULT_SIZE.width/2,centerY:DEFAULT_SIZE.height/2},baseState=null;
 let resizeTimestamp=0,zoom=DEFAULT_ZOOM,inputSender=()=>{},camera={x:0,y:0},pointerState={x:viewport.centerX,y:viewport.centerY,down:false},showLeaderboard=false,isRunning=false,animationFrame=null,snapshotBuffer=[],serverOffsetEstimate=null,lastUiTextUpdateAt=0,lastControlsText="",lastLeaderboardText="",lastRenderAt=0,networkState=emptyState(),hasInitialCamera=false,roundHistory=new Map(),resolvedRoundStatus=null,frameCap=loadFrameCap(),localPlayerVisual=null;
 
 function emptyState(){return{status:"waiting",serverTime:0,tickNumber:0,worldRadius:1750,sun:{x:0,y:0,radius:110,color:0xffd166},suns:[{id:"sun-a",x:0,y:0,radius:110,color:0xffd166}],players:[],enemies:[],rocks:[],asteroids:[],explosions:[],playerId:undefined};}
@@ -210,6 +210,34 @@ function lerp(start,end,alpha){return start+(end-start)*alpha;}
 function normalizeAngle(angle){let value=angle;while(value<=-Math.PI)value+=Math.PI*2;while(value>Math.PI)value-=Math.PI*2;return value;}
 function lerpAngle(start,end,alpha){return normalizeAngle(start+normalizeAngle(end-start)*alpha);}
 function cloneState(state){return{...state,sun:{...state.sun},suns:(state.suns||[state.sun]).map((entry)=>({...entry})),players:state.players.map((entry)=>({...entry})),enemies:state.enemies.map((entry)=>({...entry})),rocks:state.rocks.map((entry)=>({...entry})),asteroids:(state.asteroids||[]).map((entry)=>({...entry})),explosions:(state.explosions||[]).map((entry)=>({...entry}))};}
+
+function applyDeltaToState(state, delta) {
+    const types = ['players', 'enemies', 'rocks', 'asteroids', 'explosions', 'suns'];
+    for (const type of types) {
+        const patches = delta[type];
+        if (!patches) continue;
+        const arr = state[type];
+        for (const patch of patches) {
+            const id = patch.id;
+            if (patch._removed) {
+                const idx = arr.findIndex(e => e.id === id);
+                if (idx !== -1) arr.splice(idx, 1);
+            } else {
+                let entity = arr.find(e => e.id === id);
+                if (!entity) {
+                    const { id: _, ...rest } = patch;
+                    entity = { id, ...rest };
+                    arr.push(entity);
+                } else {
+                    for (const key of Object.keys(patch)) {
+                        if (key === 'id' || key === '_removed') continue;
+                        entity[key] = patch[key];
+                    }
+                }
+            }
+        }
+    }
+}
 function interpolateEntity(previous,next,alpha){const base=next||previous;if(!previous||!next)return{...base};return{...base,x:lerp(previous.x,next.x,alpha),y:lerp(previous.y,next.y,alpha),vx:typeof previous.vx==="number"&&typeof next.vx==="number"?lerp(previous.vx,next.vx,alpha):base.vx,vy:typeof previous.vy==="number"&&typeof next.vy==="number"?lerp(previous.vy,next.vy,alpha):base.vy,radius:typeof previous.radius==="number"&&typeof next.radius==="number"?lerp(previous.radius,next.radius,alpha):base.radius,angle:typeof previous.angle==="number"&&typeof next.angle==="number"?lerpAngle(previous.angle,next.angle,alpha):base.angle,modifier:typeof previous.modifier==="number"&&typeof next.modifier==="number"?lerp(previous.modifier,next.modifier,alpha):base.modifier};}
 function interpolateList(previousList,nextList,alpha){const previousMap=new Map(previousList.map((entry)=>[entry.id,entry])),nextMap=new Map(nextList.map((entry)=>[entry.id,entry])),ids=new Set([...previousMap.keys(),...nextMap.keys()]),result=[];for(const id of ids)result.push(interpolateEntity(previousMap.get(id),nextMap.get(id),alpha));return result;}
 function interpolatedState(){if(snapshotBuffer.length===0)return networkState;if(snapshotBuffer.length===1||serverOffsetEstimate===null)return cloneState(snapshotBuffer[snapshotBuffer.length-1]);const renderServerTime=Date.now()-serverOffsetEstimate-INTERPOLATION_DELAY_MS;let previous=snapshotBuffer[0],next=snapshotBuffer[snapshotBuffer.length-1];for(let i=0;i<snapshotBuffer.length;i+=1){const snapshot=snapshotBuffer[i];if(snapshot.serverTime<=renderServerTime)previous=snapshot;if(snapshot.serverTime>=renderServerTime){next=snapshot;break;}}if(previous===next)return cloneState(previous);const duration=Math.max(1,next.serverTime-previous.serverTime),alpha=Math.max(0,Math.min(1,(renderServerTime-previous.serverTime)/duration));const interpolatedSuns=interpolateList(previous.suns||[previous.sun],next.suns||[next.sun],alpha);return{serverTime:lerp(previous.serverTime,next.serverTime,alpha),tickNumber:alpha<0.5?previous.tickNumber:next.tickNumber,status:alpha<0.5?previous.status:next.status,worldRadius:lerp(previous.worldRadius,next.worldRadius,alpha),sun:interpolateEntity(previous.sun,next.sun,alpha),suns:interpolatedSuns,players:interpolateList(previous.players,next.players,alpha),enemies:interpolateList(previous.enemies,next.enemies,alpha),rocks:interpolateList(previous.rocks,next.rocks,alpha),asteroids:interpolateList(previous.asteroids||[],next.asteroids||[],alpha),explosions:interpolateList(previous.explosions||[],next.explosions||[],alpha),playerId:next.playerId||previous.playerId};}
@@ -455,9 +483,45 @@ function render(){
 }
 function frame(now){if(now-lastRenderAt<targetFrameMs()){if(isRunning)animationFrame=window.requestAnimationFrame(frame);return;}lastRenderAt=now;networkState=interpolatedState();syncLocalPlayerVisual();updateCamera();sendContinuousAim();updateAudio();render();if(isRunning)animationFrame=window.requestAnimationFrame(frame);}
 
-const battlePlanetGame={start(){if(isRunning)return;isRunning=true;lastRenderAt=0;animationFrame=window.requestAnimationFrame(frame);},stop(){isRunning=false;if(animationFrame!==null){window.cancelAnimationFrame(animationFrame);animationFrame=null;}},resizeToContainer(){if(Date.now()-resizeTimestamp<RESIZE_THROTTLE_MS)return;resizeTimestamp=Date.now();resizeBackingStore();buildBackgroundLayers();canvas.style.display="block";canvas.style.width=`${viewport.width}px`;canvas.style.height=`${viewport.height}px`;render();},setInputSender(sender){inputSender=sender;},setState(nextState){const snapshot=cloneState(nextState),offsetSample=Date.now()-snapshot.serverTime;if(serverOffsetEstimate===null)serverOffsetEstimate=offsetSample;else{serverOffsetEstimate=Math.min(serverOffsetEstimate,offsetSample);serverOffsetEstimate=lerp(serverOffsetEstimate,offsetSample,0.02);}const existingIndex=snapshotBuffer.findIndex((entry)=>entry.tickNumber===snapshot.tickNumber);if(existingIndex>=0)snapshotBuffer[existingIndex]=snapshot;else snapshotBuffer.push(snapshot);snapshotBuffer.sort((left,right)=>left.serverTime-right.serverTime);if(snapshotBuffer.length>MAX_SNAPSHOT_BUFFER)snapshotBuffer=snapshotBuffer.slice(snapshotBuffer.length-MAX_SNAPSHOT_BUFFER);networkState=interpolatedState();updateRoundHistory(networkState);buildArena();buildSun();const player=getPlayer();if(!player)localPlayerVisual=null;if(player&&!hasInitialCamera){const anchorSun=nearestSunFor(player);camera.x=player.x*(1-CAMERA_SUN_WEIGHT)+anchorSun.x*CAMERA_SUN_WEIGHT;camera.y=player.y*(1-CAMERA_SUN_WEIGHT)+anchorSun.y*CAMERA_SUN_WEIGHT;hasInitialCamera=true;}render();},clearState(){
+const battlePlanetGame={start(){if(isRunning)return;isRunning=true;lastRenderAt=0;animationFrame=window.requestAnimationFrame(frame);},stop(){isRunning=false;if(animationFrame!==null){window.cancelAnimationFrame(animationFrame);animationFrame=null;}},resizeToContainer(){if(Date.now()-resizeTimestamp<RESIZE_THROTTLE_MS)return;resizeTimestamp=Date.now();resizeBackingStore();buildBackgroundLayers();canvas.style.display="block";canvas.style.width=`${viewport.width}px`;canvas.style.height=`${viewport.height}px`;render();},setInputSender(sender){inputSender=sender;},setFullState(fullState){
+    baseState = cloneState(fullState);
+    snapshotBuffer = [];
+    const snapshot = cloneState(fullState);
+    const offsetSample = Date.now() - snapshot.serverTime;
+    if(serverOffsetEstimate===null)serverOffsetEstimate=offsetSample;else serverOffsetEstimate=Math.min(serverOffsetEstimate,offsetSample);
+    snapshotBuffer.push(snapshot);
+    networkState=interpolatedState();
+    updateRoundHistory(networkState);
+    buildArena();buildSun();
+    const player=getPlayer();if(!player)localPlayerVisual=null;
+    if(player&&!hasInitialCamera){const anchorSun=nearestSunFor(player);camera.x=player.x*(1-CAMERA_SUN_WEIGHT)+anchorSun.x*CAMERA_SUN_WEIGHT;camera.y=player.y*(1-CAMERA_SUN_WEIGHT)+anchorSun.y*CAMERA_SUN_WEIGHT;hasInitialCamera=true;}
+    render();
+},
+setDelta(packet){
+    if(!baseState) return;
+    const { delta, meta } = packet;
+    baseState = cloneState(baseState);
+    applyDeltaToState(baseState, delta);
+    baseState.sun = baseState.suns[0];
+    const snapshot = cloneState(baseState);
+    if (meta) {
+        if (meta.serverTime !== undefined) snapshot.serverTime = meta.serverTime;
+        if (meta.tickNumber !== undefined) snapshot.tickNumber = meta.tickNumber;
+        if (meta.status !== undefined) snapshot.status = meta.status;
+    }
+    const offsetSample = Date.now() - snapshot.serverTime;
+    if(serverOffsetEstimate===null)serverOffsetEstimate=offsetSample;else serverOffsetEstimate=Math.min(serverOffsetEstimate,offsetSample);
+    const existingIndex=snapshotBuffer.findIndex((entry)=>entry.tickNumber===snapshot.tickNumber);
+    if(existingIndex>=0)snapshotBuffer[existingIndex]=snapshot;else snapshotBuffer.push(snapshot);
+    snapshotBuffer.sort((left,right)=>left.serverTime-right.serverTime);
+    if(snapshotBuffer.length>MAX_SNAPSHOT_BUFFER)snapshotBuffer=snapshotBuffer.slice(snapshotBuffer.length-MAX_SNAPSHOT_BUFFER);
+    networkState=interpolatedState();
+    updateRoundHistory(networkState);
+    render();
+},clearState(){
     snapshotBuffer=[];
     serverOffsetEstimate=null;
+    baseState=null;
     networkState=emptyState();
     audioState.playedExplosions.clear();
     lastUiTextUpdateAt=0;

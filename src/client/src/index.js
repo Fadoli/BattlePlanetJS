@@ -282,8 +282,12 @@ $(function onReady() {
     });
 
     socket.on("lobbyUpdate", renderLobbyList);
-    socket.on("gameState", (state) => {
-        BattlePlanetGame.setState(state);
+    socket.on("gameState", (msg) => {
+        if (msg.full) {
+            BattlePlanetGame.setFullState(msg.state);
+        } else {
+            BattlePlanetGame.setDelta(msg);
+        }
     });
 
     BattlePlanetGame.setInputSender((payload) => {
