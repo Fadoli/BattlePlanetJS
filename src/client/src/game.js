@@ -499,17 +499,18 @@ function applyDeltaToState(state, delta) {
         const patches = delta[type];
         if (!patches) continue;
         const arr = state[type];
+        // Build a Map for O(1) lookups
+        const entityMap = new Map(arr.map(e => [e.id, e]));
         for (const patch of patches) {
             const id = patch.id;
             if (patch._removed) {
-                const idx = arr.findIndex(e => e.id === id);
-                if (idx !== -1) arr.splice(idx, 1);
+                entityMap.delete(id);
             } else {
-                let entity = arr.find(e => e.id === id);
+                let entity = entityMap.get(id);
                 if (!entity) {
                     const { id: _, ...rest } = patch;
                     entity = { id, ...rest };
-                    arr.push(entity);
+                    entityMap.set(id, entity);
                 } else {
                     for (const key of Object.keys(patch)) {
                         if (key === 'id' || key === '_removed') continue;
@@ -518,6 +519,8 @@ function applyDeltaToState(state, delta) {
                 }
             }
         }
+        // Rebuild array from map values
+        state[type] = Array.from(entityMap.values());
     }
 }
 function interpolateEntity(previous, next, alpha) { const base = next || previous; if (!previous || !next) return { ...base }; return { ...base, x: lerp(previous.x, next.x, alpha), y: lerp(previous.y, next.y, alpha), vx: typeof previous.vx === "number" && typeof next.vx === "number" ? lerp(previous.vx, next.vx, alpha) : base.vx, vy: typeof previous.vy === "number" && typeof next.vy === "number" ? lerp(previous.vy, next.vy, alpha) : base.vy, radius: typeof previous.radius === "number" && typeof next.radius === "number" ? lerp(previous.radius, next.radius, alpha) : base.radius, angle: typeof previous.angle === "number" && typeof next.angle === "number" ? lerpAngle(previous.angle, next.angle, alpha) : base.angle, modifier: typeof previous.modifier === "number" && typeof next.modifier === "number" ? lerp(previous.modifier, next.modifier, alpha) : base.modifier }; }
