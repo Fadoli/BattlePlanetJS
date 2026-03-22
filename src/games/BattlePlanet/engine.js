@@ -718,7 +718,6 @@ class GameEngine {
         const playersArray = Object.values(this.entities.players).map(p => ({
             id: p.id, name: p.name, team: p.team,
             x: round(p.x), y: round(p.y),
-            vx: round(p.vx), vy: round(p.vy),
             radius: p.radius, angle: round(p.angle),
             health: p.health, modifier: round(p.modifier),
             color: p.color, alive: p.alive
@@ -726,13 +725,12 @@ class GameEngine {
         const enemiesArr = this.entities.enemies.map(e => ({
             id: e.id, name: e.name, team: e.team,
             x: round(e.x), y: round(e.y),
-            vx: round(e.vx), vy: round(e.vy),
             radius: e.radius, angle: round(e.angle),
             health: e.health, modifier: round(e.modifier),
             color: e.color, alive: e.alive
         }));
         const rocksArr = this.entities.rocks.map(r => ({
-            id: r.id, ownerId: r.ownerId, team: r.team,
+            id: r.id,
             x: round(r.x), y: round(r.y),
             radius: r.radius, color: r.color
         }));
@@ -742,15 +740,14 @@ class GameEngine {
             ttl: round2(ex.ttl), maxTtl: round2(ex.maxTtl)
         }));
         const asteroidsArr = this.entities.asteroids.map(a => ({
-            id: a.id, team: a.team,
+            id: a.id,
             x: round(a.x), y: round(a.y),
-            vx: round(a.vx), vy: round(a.vy),
             radius: a.radius, angle: round(a.angle),
             color: a.color, alive: a.alive
         }));
         const sunsArr = this.entities.suns.map(s => ({
-            id: s.id, x: s.x, y: s.y, radius: s.radius, mass: s.mass, color: s.color
-        })); // suns don't need rounding as much
+            id: s.id, x: round(s.x), y: round(s.y), radius: round(s.radius), color: s.color
+        }));
 
         return {
             tickNumber: this.tickNumber,
