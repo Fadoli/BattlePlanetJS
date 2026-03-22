@@ -13,7 +13,6 @@ const engine = new GameEngine({
 
 engine.addPlayer('p1', 'Player1');
 const snapshot0 = engine.getSnapshot();
-const visibleIds = engine.getVisibleEntityIds('p1');
 
 // Run several ticks
 for (let i = 0; i < 3; i++) {
@@ -21,8 +20,8 @@ for (let i = 0; i < 3; i++) {
 }
 const snapshot1 = engine.getSnapshot();
 
-// Compute delta as server would
-const delta = computeDelta(snapshot0, snapshot1, visibleIds);
+// Compute delta as server would (now without visibleIds, sends all entities)
+const delta = computeDelta(snapshot0, snapshot1);
 
 console.log('Delta packet keys:', Object.keys(delta));
 console.log('Has players delta?', !!delta.players);

@@ -88,9 +88,7 @@ class GameManager {
             if (full) {
                 payload = { full: true, state: { ...snapshot, playerId: token } };
             } else {
-                const viewDistance = this.arena.worldRadius * 1.5;
-                const visibleIds = this.engine.getVisibleEntityIds(token, viewDistance);
-                const delta = computeDelta(player.lastSnapshot, snapshot, visibleIds);
+                const delta = computeDelta(player.lastSnapshot, snapshot);
                 payload = {
                     full: false,
                     delta,

@@ -49,7 +49,7 @@ function round10(num) { return Math.round(num * 10) / 10; }
 function roundAngle10(num) { return Math.round(num * 10) / 10; }
 
 // Compute a minimal delta between two snapshots for visible entities only
-function computeDelta(oldSnapshot, newSnapshot, visibleIds) {
+function computeDelta(oldSnapshot, newSnapshot) {
     const delta = {};
     const types = ['players', 'enemies', 'rocks', 'asteroids', 'explosions', 'suns'];
     for (const type of types) {
@@ -58,30 +58,29 @@ function computeDelta(oldSnapshot, newSnapshot, visibleIds) {
         const oldMap = new Map(oldList.map(e => [e.id, e]));
         const newMap = new Map(newList.map(e => [e.id, e]));
         const changes = [];
-        // Check visible entities in new snapshot
-        for (const id of visibleIds) {
+        // Process all entities (new, updated, removed)
+        const allIds = new Set([...oldMap.keys(), ...newMap.keys()]);
+        for (const id of allIds) {
             const oldEnt = oldMap.get(id);
             const newEnt = newMap.get(id);
-            if (!newEnt) continue; // not present, maybe ignore (removals handled separately)
-            if (!oldEnt) {
-                // New entity, include full
-                changes.push({ id, ...newEnt });
-            } else {
-                // Compute changed fields
-                const diff = {};
-                for (const key of Object.keys(newEnt)) {
-                    if (oldEnt[key] !== newEnt[key]) {
-                        diff[key] = newEnt[key];
+            if (newEnt) {
+                if (!oldEnt) {
+                    // New entity, include full
+                    changes.push({ id, ...newEnt });
+                } else {
+                    // Compute changed fields
+                    const diff = {};
+                    for (const key of Object.keys(newEnt)) {
+                        if (oldEnt[key] !== newEnt[key]) {
+                            diff[key] = newEnt[key];
+                        }
+                    }
+                    if (Object.keys(diff).length > 0) {
+                        changes.push({ id, ...diff });
                     }
                 }
-                if (Object.keys(diff).length > 0) {
-                    changes.push({ id, ...diff });
-                }
-            }
-        }
-        // Check removals: entities that were in oldMap but are no longer in newMap
-        for (const id of oldMap.keys()) {
-            if (!newMap.has(id)) {
+            } else if (oldEnt) {
+                // Removed entity
                 changes.push({ id, _removed: true });
             }
         }
@@ -513,13 +512,23 @@ class GameEngine {
             for (let j = i+1; j < this.entities.rocks.length; j++) {
                 const a = this.entities.rocks[i], b = this.entities.rocks[j];
                 if (distanceSquared(a, b) < (a.radius + b.radius)**2) {
-                    a.ttl = 0; b.ttl = 0;
+                    if (a.ttl > 0) {
+                        this.spawnExplosion(a.x, a.y, 16, a.color);
+                        this.events.push({ type: EVENT_TYPES.ROCK_DESTROYED, id: a.id });
+                        a.ttl = 0;
+                    }
+                    if (b.ttl > 0) {
+                        this.spawnExplosion(b.x, b.y, 16, b.color);
+                        this.events.push({ type: EVENT_TYPES.ROCK_DESTROYED, id: b.id });
+                        b.ttl = 0;
+                    }
                 }
             }
         }
 
         // Rock-body collisions
         for (const r of this.entities.rocks) {
+            if (r.ttl <= 0) continue; // Already destroyed in rock-rock collision
             for (const b of bodies) {
                 if (!b.alive || r.ownerId === b.id || (r.team === b.team && r.team !== undefined)) continue;
                 if (distanceSquared(r, b) >= (r.radius + b.radius)**2) continue;
@@ -754,26 +763,6 @@ class GameEngine {
             explosions: explosionsArr,
             asteroids: asteroidsArr
         };
-    }
-
-    // Calculate which entities are visible to a player
-    getVisibleEntityIds(playerToken, viewDistance = 2000) {
-        const player = this.entities.players[playerToken];
-        if (!player) return new Set();
-        const visible = new Set();
-        const addIfVisible = (entity) => {
-            if ((entity.x - player.x)**2 + (entity.y - player.y)**2 <= viewDistance**2) {
-                visible.add(entity.id);
-            }
-        };
-        Object.values(this.entities.players).forEach(addIfVisible);
-        this.entities.enemies.forEach(addIfVisible);
-        this.entities.rocks.forEach(addIfVisible);
-        this.entities.asteroids.forEach(addIfVisible);
-        // explosions and suns usually visible regardless
-        this.entities.explosions.forEach(ex => visible.add(ex.id));
-        this.entities.suns.forEach(s => visible.add(s.id));
-        return visible;
     }
 
     nextId(prefix) {

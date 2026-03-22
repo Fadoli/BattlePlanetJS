@@ -19,14 +19,9 @@ console.log('After 5 ticks:');
 console.log('Players alive:', snapshot2.players.filter(p => p.alive).length);
 console.log('Rocks count:', snapshot2.rocks.length);
 
-// Test 3: Delta computation
-const delta = computeDelta(snapshot1, snapshot2, new Set(snapshot2.players.map(p => p.id)));
+// Test 3: Delta computation (now includes all entities, no visibility filtering)
+const delta = computeDelta(snapshot1, snapshot2);
 console.log('Delta types:', Object.keys(delta));
 console.log('Delta meta:', delta.meta);
-
-// Test 4: Interest management
-const playerToken = snapshot2.players[0].id;
-const visibleIds = engine.getVisibleEntityIds(playerToken);
-console.log('Visible entity count:', visibleIds.size);
 
 console.log('✅ All engine tests passed!');
