@@ -530,7 +530,9 @@ class GameEngine {
         for (const r of this.entities.rocks) {
             if (r.ttl <= 0) continue; // Already destroyed in rock-rock collision
             for (const b of bodies) {
-                if (!b.alive || r.ownerId === b.id || (r.team === b.team && r.team !== undefined)) continue;
+                if (!b.alive) continue;
+                // Skip collision only if it's a different entity on the same team (teammate's rock)
+                if (r.team !== undefined && r.team === b.team && r.ownerId !== b.id) continue;
                 if (distanceSquared(r, b) >= (r.radius + b.radius)**2) continue;
                 if (bounceRock(b, r)) {
                     increaseModifier(b, ROCK_HIT_MODIFIER_GAIN);
