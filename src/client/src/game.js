@@ -57,6 +57,8 @@ const cache = {
     sunKey: "",
     planetSprites: new Map(),
     threeObjects: new Map(),
+    // Reusable Set for tracking visible entity IDs each frame (avoid allocations)
+    currentIds: new Set(),
     // Shared geometries for performance
     geometries: {
         circle16: new THREE.CircleGeometry(1, 16),
@@ -77,6 +79,7 @@ let pointerState = {
     down: false
 };
 let showLeaderboard = false;
+let leaderboardHidden = true; // Track current DOM hidden state to avoid redundant updates
 let isRunning = false;
 let animationFrame = null;
 let snapshotBuffer = [];
@@ -519,30 +522,45 @@ function applyDeltaToState(state, delta) {
 }
 function interpolateEntity(previous, next, alpha) { const base = next || previous; if (!previous || !next) return { ...base }; return { ...base, x: lerp(previous.x, next.x, alpha), y: lerp(previous.y, next.y, alpha), vx: typeof previous.vx === "number" && typeof next.vx === "number" ? lerp(previous.vx, next.vx, alpha) : base.vx, vy: typeof previous.vy === "number" && typeof next.vy === "number" ? lerp(previous.vy, next.vy, alpha) : base.vy, radius: typeof previous.radius === "number" && typeof next.radius === "number" ? lerp(previous.radius, next.radius, alpha) : base.radius, angle: typeof previous.angle === "number" && typeof next.angle === "number" ? lerpAngle(previous.angle, next.angle, alpha) : base.angle, modifier: typeof previous.modifier === "number" && typeof next.modifier === "number" ? lerp(previous.modifier, next.modifier, alpha) : base.modifier }; }
 function interpolateList(previousList, nextList, alpha) {
-    const previousMap = new Map(previousList.map((entry) => [entry.id, entry]));
-    const nextMap = new Map(nextList.map((entry) => [entry.id, entry]));
-    const ids = new Set([...previousMap.keys(), ...nextMap.keys()]);
     const result = [];
 
-    for (const id of ids) {
-        const prev = previousMap.get(id);
-        const next = nextMap.get(id);
+    if (alpha <= 0) {
+        // No interpolation, only previous
+        for (const entry of previousList) {
+            result.push({ ...entry });
+        }
+        return result;
+    }
+    if (alpha >= 1) {
+        // Only next snapshot
+        for (const entry of nextList) {
+            result.push({ ...entry });
+        }
+        return result;
+    }
 
-        if (prev && next) {
-            // Entity exists in both snapshots: interpolate
+    // Build map of next entities for O(1) lookup
+    const nextMap = new Map(nextList.map((entry) => [entry.id, entry]));
+
+    // Process previous entities: interpolate or keep
+    for (const prev of previousList) {
+        const next = nextMap.get(prev.id);
+        if (next) {
             result.push(interpolateEntity(prev, next, alpha));
-        } else if (prev && !next) {
-            // Entity was removed: keep it until removal time (alpha < 1)
-            if (alpha < 1) {
-                result.push({ ...prev });
-            }
-        } else if (!prev && next) {
-            // Entity was added: only show after spawn time (alpha > 0)
-            if (alpha > 0) {
-                result.push({ ...next });
-            }
+            nextMap.delete(prev.id); // Mark as processed
+        } else if (alpha < 1) {
+            // Removed entity
+            result.push({ ...prev });
         }
     }
+
+    // Remaining entries in nextMap are new entities
+    for (const next of nextMap.values()) {
+        if (alpha > 0) {
+            result.push({ ...next });
+        }
+    }
+
     return result;
 }
 function interpolatedState() {
@@ -805,7 +823,11 @@ function updateUi() {
         lastControlsText = controlsText;
     }
 
-    leaderboardElement.hidden = !showLeaderboard;
+    const shouldHideLeaderboard = !showLeaderboard;
+    if (leaderboardHidden !== shouldHideLeaderboard) {
+        leaderboardElement.hidden = shouldHideLeaderboard;
+        leaderboardHidden = shouldHideLeaderboard;
+    }
 
     if (showLeaderboard) {
         const perf = getPerfStats();
@@ -1044,14 +1066,14 @@ function render() {
         obj.visible = isCircleVisible(worldToScreenX(explosion.x), worldToScreenY(explosion.y), worldToScreenSize(radius));
     });
 
-    const currentIds = new Set([
-        ...suns.map((_, i) => `sun-${i}`),
-        ...(networkState.asteroids || []).map((a, i) => `asteroid-${a.id || i}`),
-        ...networkState.rocks.map((r, i) => `rock-${r.id || i}`),
-        ...networkState.players.map(p => p.id),
-        ...networkState.enemies.map(e => e.id),
-        ...(networkState.explosions || []).map((e, i) => `explosion-${e.id || i}`)
-    ]);
+    const currentIds = cache.currentIds;
+    currentIds.clear();
+    suns.forEach((_, i) => currentIds.add(`sun-${i}`));
+    (networkState.asteroids || []).forEach((a, i) => currentIds.add(`asteroid-${a.id || i}`));
+    networkState.rocks.forEach((r, i) => currentIds.add(`rock-${r.id || i}`));
+    networkState.players.forEach(p => currentIds.add(p.id));
+    networkState.enemies.forEach(e => currentIds.add(e.id));
+    (networkState.explosions || []).forEach((e, i) => currentIds.add(`explosion-${e.id || i}`));
 
     cache.threeObjects.forEach((obj, id) => {
         if (!currentIds.has(id)) obj.visible = false;
@@ -1095,8 +1117,15 @@ const battlePlanetGame = {
         const offsetSample = Date.now() - snapshot.serverTime;
         if (serverOffsetEstimate === null) serverOffsetEstimate = offsetSample; else serverOffsetEstimate = Math.min(serverOffsetEstimate, offsetSample);
         
-        // Keep only buffered snapshots that are older than this full state for continuity
-        snapshotBuffer = snapshotBuffer.filter(s => s.tickNumber < snapshot.tickNumber);
+        // Remove any snapshots that are not older than this full state (keep only strictly older)
+        // Buffer is sorted by tickNumber, so find cutoff and truncate
+        let keepEnd = 0;
+        while (keepEnd < snapshotBuffer.length && snapshotBuffer[keepEnd].tickNumber < snapshot.tickNumber) {
+            keepEnd++;
+        }
+        if (keepEnd < snapshotBuffer.length) {
+            snapshotBuffer.length = keepEnd; // truncate in-place
+        }
         
         // Insert the new snapshot in order
         const last = snapshotBuffer[snapshotBuffer.length - 1];
@@ -1109,9 +1138,10 @@ const battlePlanetGame = {
             snapshotBuffer.splice(i, 0, snapshot);
         }
         
-        // Trim buffer if too large
+        // Trim buffer if too large (remove oldest from front)
         if (snapshotBuffer.length > MAX_SNAPSHOT_BUFFER) {
-            snapshotBuffer = snapshotBuffer.slice(snapshotBuffer.length - MAX_SNAPSHOT_BUFFER);
+            const excess = snapshotBuffer.length - MAX_SNAPSHOT_BUFFER;
+            snapshotBuffer.splice(0, excess);
         }
         networkState = interpolatedState();
         updateRoundHistory(networkState);
@@ -1153,7 +1183,8 @@ const battlePlanetGame = {
 
         // Trim from front if buffer too large
         if (snapshotBuffer.length > MAX_SNAPSHOT_BUFFER) {
-            snapshotBuffer = snapshotBuffer.slice(snapshotBuffer.length - MAX_SNAPSHOT_BUFFER);
+            const excess = snapshotBuffer.length - MAX_SNAPSHOT_BUFFER;
+            snapshotBuffer.splice(0, excess);
         }
 
         networkState = interpolatedState();
@@ -1173,6 +1204,7 @@ const battlePlanetGame = {
         localPlayerVisual = null;
         hasInitialCamera = false;
         showLeaderboard = false;
+        leaderboardHidden = true; // Keep DOM state in sync
         resolvedRoundStatus = null;
         roundHistory = new Map();
         leaderboardElement.hidden = true;
