@@ -527,13 +527,20 @@ function interpolateList(previousList, nextList, alpha) {
     for (const id of ids) {
         const prev = previousMap.get(id);
         const next = nextMap.get(id);
-        // If entity exists only in previous (removed) and we're at or past next snapshot time, skip it
-        if (!next && alpha >= 1) continue;
-        if (!prev || !next) {
-            // One-sided: just use whichever exists (no interpolation)
-            result.push({ ...(next || prev) });
-        } else {
+
+        if (prev && next) {
+            // Entity exists in both snapshots: interpolate
             result.push(interpolateEntity(prev, next, alpha));
+        } else if (prev && !next) {
+            // Entity was removed: keep it until removal time (alpha < 1)
+            if (alpha < 1) {
+                result.push({ ...prev });
+            }
+        } else if (!prev && next) {
+            // Entity was added: only show after spawn time (alpha > 0)
+            if (alpha > 0) {
+                result.push({ ...next });
+            }
         }
     }
     return result;
@@ -718,6 +725,10 @@ function updateRoundHistory(state) {
     currentEntities.forEach((entity) => historyForEntity(entity));
 
     if (state.status === "playing") {
+        // Clear audio memory when transitioning from a round-end state back to playing
+        if (resolvedRoundStatus !== null) {
+            audioState.playedExplosions.clear();
+        }
         resolvedRoundStatus = null;
         return;
     }

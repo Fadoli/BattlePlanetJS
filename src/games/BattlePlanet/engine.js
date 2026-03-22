@@ -79,9 +79,9 @@ function computeDelta(oldSnapshot, newSnapshot, visibleIds) {
                 }
             }
         }
-        // Check removals: entities that were in oldMap but not in newMap and were visible
-        for (const id of visibleIds) {
-            if (!newMap.has(id) && oldMap.has(id)) {
+        // Check removals: entities that were in oldMap but are no longer in newMap
+        for (const id of oldMap.keys()) {
+            if (!newMap.has(id)) {
                 changes.push({ id, _removed: true });
             }
         }
@@ -703,6 +703,7 @@ class GameEngine {
     // Create a snapshot for network transmission (per-client filtered later)
     getSnapshot() {
         const round = val => typeof val === 'number' ? Math.round(val * 10) / 10 : val;
+        const round2 = val => typeof val === 'number' ? Math.round(val * 100) / 100 : val;
         const playersArray = Object.values(this.entities.players).map(p => ({
             id: p.id, name: p.name, team: p.team,
             x: round(p.x), y: round(p.y),
@@ -727,7 +728,7 @@ class GameEngine {
         const explosionsArr = this.entities.explosions.map(ex => ({
             id: ex.id, x: round(ex.x), y: round(ex.y),
             radius: round(ex.radius), color: ex.color,
-            ttl: round(ex.ttl), maxTtl: round(ex.maxTtl)
+            ttl: round2(ex.ttl), maxTtl: round2(ex.maxTtl)
         }));
         const asteroidsArr = this.entities.asteroids.map(a => ({
             id: a.id, team: a.team,
