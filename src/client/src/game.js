@@ -14,7 +14,7 @@ const UI_TEXT_REFRESH_MS = 140;
 const PERF_SAMPLE_WINDOW = 90;
 const DPR_CAP = 1;
 const VISIBILITY_MARGIN = 96;
-const FRAME_CAP_OPTIONS = [30, 60, 90, 120];
+const FRAME_CAP_OPTIONS = [0, 30, 60, 90, 120]; // 0 = uncapped
 const DEFAULT_FRAME_CAP = 60;
 const LOCAL_PLAYER_VISUAL_LERP = 0.22;
 const hostElement = document.getElementById("gameRender");
@@ -65,7 +65,11 @@ const cache = {
         circle8: new THREE.CircleGeometry(1, 8),
         plane: new THREE.PlaneGeometry(1, 1),
         ring: new THREE.RingGeometry(0.8, 1, 32)
-    }
+    },
+    // Cached materials by color (hex string) to avoid recreating materials
+    materialCache: new Map(),
+    // Shared sun material
+    sunMaterial: null
 };
 const perfState = { frameCount: 0, lastUpdatedAt: 0, sampleStartedAt: 0, totals: { frame: 0, background: 0, arena: 0, entities: 0, effects: 0, ui: 0 }, snapshot: null };
 let viewport = { width: DEFAULT_SIZE.width, height: DEFAULT_SIZE.height, centerX: DEFAULT_SIZE.width / 2, centerY: DEFAULT_SIZE.height / 2 }, baseState = null;
@@ -116,7 +120,7 @@ function emptyState() {
     };
 }
 function targetFrameMs() {
-    return 1000 / frameCap;
+    return frameCap === 0 ? 0 : 1000 / frameCap; // 0 = uncapped, render every frame
 }
 function loadFrameCap() {
     const stored = Number.parseInt(
@@ -165,7 +169,8 @@ function syncFrameCapControl() {
     if (!frameCapSelect) return;
     frameCapSelect.value = `${frameCap}`;
     frameCapSelect.addEventListener("change", (event) => {
-        setFrameCap(Number.parseInt(event.target.value, 10) || DEFAULT_FRAME_CAP);
+        const parsed = Number.parseInt(event.target.value, 10);
+        setFrameCap(isNaN(parsed) ? DEFAULT_FRAME_CAP : parsed);
     });
 }
 function makeCanvas(w, h) {
@@ -358,6 +363,7 @@ function buildSun() {
     if (!cache.sun) {
         const texture = new THREE.CanvasTexture(node);
         const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+        cache.sunMaterial = material;
         const mesh = new THREE.Mesh(cache.geometries.plane, material);
         mesh.position.z = 2;
         cache.sun = mesh;
@@ -409,7 +415,9 @@ function getPlanetSprite(planet, isLocalPlayer) {
         isLocalPlayer ? 2.5 : 1.75
     );
 
-    const sprite = { node, size, center, baseRadius, auraRadius };
+    // Create and cache Three.js texture once
+    const texture = new THREE.CanvasTexture(node);
+    const sprite = { node, size, center, baseRadius, auraRadius, texture };
     cache.planetSprites.set(key, sprite);
     return sprite;
 }
@@ -689,7 +697,7 @@ function recordPerfSample(sample) {
         uiMs: roundPerfValue(perfState.totals.ui / perfState.frameCount),
         sampleMs: elapsedMs,
         frames: perfState.frameCount,
-        frameCap,
+        frameCap: frameCap === 0 ? 'uncapped' : frameCap,
         viewport: { width: viewport.width, height: viewport.height },
         zoom: roundPerfValue(zoom),
         updatedAt: now
@@ -713,7 +721,7 @@ function getPerfStats() {
             uiMs: 0,
             sampleMs: 0,
             frames: 0,
-            frameCap,
+            frameCap: frameCap === 0 ? 'uncapped' : frameCap,
             viewport: { width: viewport.width, height: viewport.height },
             zoom: roundPerfValue(zoom),
             updatedAt: perfState.lastUpdatedAt
@@ -888,7 +896,7 @@ function updateUi() {
             ...(historySummary.length > 0 ? historySummary : ["No completed rounds yet"]),
             "",
             "Rendering",
-            `Cap ${perf.frameCap}   FPS ${perf.fps}   ${perf.frames} frames / ${perf.sampleMs}ms`,
+            `Cap ${perf.frameCap === 0 ? 'uncapped' : perf.frameCap}   FPS ${perf.fps}   ${perf.frames} frames / ${perf.sampleMs}ms`,
             `Cost ${perf.frameMs}ms   BG ${perf.backgroundMs}   Arena ${perf.arenaMs}`,
             `Entities ${perf.entitiesMs}   Effects ${perf.effectsMs}   UI ${perf.uiMs}`,
             `Viewport ${perf.viewport.width}x${perf.viewport.height}  Zoom ${perf.zoom}`
@@ -954,9 +962,8 @@ function renderPlanet(planet, isLocalPlayer) {
     const auraRadius = Math.max(screenRadius + 2, sprite.auraRadius * zoom);
 
     const obj = getThreeObject(planet.id, "planet", () => {
-        const texture = new THREE.CanvasTexture(sprite.node);
         const material = new THREE.MeshBasicMaterial({
-            map: texture,
+            map: sprite.texture,
             transparent: true,
             side: THREE.DoubleSide
         });
@@ -966,9 +973,9 @@ function renderPlanet(planet, isLocalPlayer) {
     if (!isCircleVisible(x, y, auraRadius)) {
         obj.visible = false;
     } else {
-        if (obj.material.map.image !== sprite.node) {
-            obj.material.map.dispose();
-            obj.material.map = new THREE.CanvasTexture(sprite.node);
+        // Update texture if sprite changed (rare), reuse cached texture
+        if (obj.material.map !== sprite.texture) {
+            obj.material.map = sprite.texture;
         }
         obj.visible = true;
         obj.position.set(planet.x, planet.y, 5);
@@ -1008,16 +1015,13 @@ function render() {
     suns.forEach((sun, index) => {
         const id = `sun-${index}`;
         const obj = getThreeObject(id, "sun", () => {
-            const mesh = new THREE.Mesh(cache.geometries.plane, cache.sun.material.clone());
+            const mesh = new THREE.Mesh(cache.geometries.plane, cache.sunMaterial);
             mesh.position.z = 2;
             return mesh;
         });
         const sunScale = (sun.radius / (primarySunRadius() || 1)) * cache.sun.prototypeSize;
         obj.position.set(sun.x, sun.y, 2);
         obj.scale.set(sunScale, sunScale, 1);
-        if (obj.material.map !== cache.sun.material.map) {
-            obj.material.map = cache.sun.material.map;
-        }
         obj.visible = true;
     });
 
@@ -1026,25 +1030,33 @@ function render() {
 
     (networkState.asteroids || []).forEach((asteroid, index) => {
         const id = `asteroid-${asteroid.id || index}`;
+        const colorHex = '0x' + asteroid.color.toString(16);
+        let material = cache.materialCache.get(colorHex);
+        if (!material) {
+            material = new THREE.MeshBasicMaterial({ color: asteroid.color, side: THREE.DoubleSide });
+            cache.materialCache.set(colorHex, material);
+        }
         const obj = getThreeObject(id, "asteroid", () => {
-            const material = new THREE.MeshBasicMaterial({ color: asteroid.color, side: THREE.DoubleSide });
             return new THREE.Mesh(cache.geometries.circle16, material);
         });
         obj.position.set(asteroid.x, asteroid.y, 3);
         obj.scale.set(asteroid.radius, asteroid.radius, 1);
-        obj.material.color.set(asteroid.color);
         obj.visible = isCircleVisible(worldToScreenX(asteroid.x), worldToScreenY(asteroid.y), worldToScreenSize(asteroid.radius));
     });
 
     networkState.rocks.forEach((rock, index) => {
         const id = `rock-${rock.id || index}`;
+        const colorHex = '0x' + rock.color.toString(16);
+        let material = cache.materialCache.get(colorHex);
+        if (!material) {
+            material = new THREE.MeshBasicMaterial({ color: rock.color, side: THREE.DoubleSide });
+            cache.materialCache.set(colorHex, material);
+        }
         const obj = getThreeObject(id, "rock", () => {
-            const material = new THREE.MeshBasicMaterial({ color: rock.color, side: THREE.DoubleSide });
             return new THREE.Mesh(cache.geometries.circle8, material);
         });
         obj.position.set(rock.x, rock.y, 4);
         obj.scale.set(rock.radius, rock.radius, 1);
-        obj.material.color.set(rock.color);
         obj.visible = isCircleVisible(worldToScreenX(rock.x), worldToScreenY(rock.y), worldToScreenSize(rock.radius));
     });
 
@@ -1056,15 +1068,19 @@ function render() {
 
     (networkState.explosions || []).forEach((explosion, index) => {
         const id = `explosion-${explosion.id || index}`;
+        const colorHex = '0x' + explosion.color.toString(16);
+        let material = cache.materialCache.get(colorHex);
+        if (!material) {
+            material = new THREE.MeshBasicMaterial({ color: explosion.color, transparent: true, side: THREE.DoubleSide });
+            cache.materialCache.set(colorHex, material);
+        }
         const obj = getThreeObject(id, "explosion", () => {
-            const material = new THREE.MeshBasicMaterial({ color: explosion.color, transparent: true, side: THREE.DoubleSide });
             return new THREE.Mesh(cache.geometries.ring, material);
         });
         const alpha = explosion.maxTtl ? Math.max(0, explosion.ttl / explosion.maxTtl) : 0.5;
         const radius = explosion.radius * (1.35 - alpha * 0.35);
         obj.position.set(explosion.x, explosion.y, 6);
         obj.scale.set(radius, radius, 1);
-        obj.material.color.set(explosion.color);
         obj.material.opacity = alpha * 0.9;
         obj.visible = isCircleVisible(worldToScreenX(explosion.x), worldToScreenY(explosion.y), worldToScreenSize(radius));
     });
@@ -1092,7 +1108,8 @@ function render() {
     recordPerfSample({ frame: uiEnd - frameStart, background: backgroundEnd - backgroundStart, arena: arenaDrawEnd - arenaDrawStart, entities: entitiesEnd - entitiesStart, effects: effectsEnd - effectsStart, ui: uiEnd - uiStart });
 }
 function frame(now) {
-    if (now - lastRenderAt < targetFrameMs()) {
+    const targetMs = targetFrameMs();
+    if (targetMs > 0 && now - lastRenderAt < targetMs) {
         if (isRunning) animationFrame = window.requestAnimationFrame(frame);
         return;
     }
@@ -1213,8 +1230,13 @@ const battlePlanetGame = {
         leaderboardElement.hidden = true;
         cache.threeObjects.forEach(obj => scene.remove(obj));
         cache.threeObjects.clear();
+        // Dispose cached materials and textures
+        cache.materialCache.forEach(mat => mat.dispose());
+        cache.materialCache.clear();
+        cache.planetSprites.forEach(sprite => sprite.texture?.dispose());
+        cache.planetSprites.clear();
         if (cache.arena) { scene.remove(cache.arena); cache.arena = null; }
-        if (cache.sun) { scene.remove(cache.sun); cache.sun = null; }
+        if (cache.sun) { scene.remove(cache.sun); cache.sun = null; cache.sunMaterial = null; }
         if (cache.stars) { scene.remove(cache.stars); cache.stars = null; }
         buildStarfield();
         buildArena();
