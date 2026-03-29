@@ -1,4 +1,5 @@
 const LobbyManager = require('./lobby');
+const zlib = require('zlib');
 
 /**
  * @export
@@ -162,7 +163,8 @@ class Client {
     }
 
     sendGameState(state) {
-        this.socket.emit("gameState", state);
+        // Enable compression for gameState messages (large payloads)
+        this.socket.emit("gameState", state, true);
     }
 
     /**

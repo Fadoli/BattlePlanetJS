@@ -10,10 +10,23 @@ function createSocketClient() {
         }
     });
 
-    socket.addEventListener("message", (event) => {
+    socket.addEventListener("message", async (event) => {
         let message;
         try {
-            message = JSON.parse(event.data);
+            if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+                // Decompress gzip-compressed binary data
+                const arrayBuffer = event.data instanceof ArrayBuffer ? event.data : await event.data.arrayBuffer();
+                try {
+                    const decompressed = await decompressGzip(arrayBuffer);
+                    const text = new TextDecoder().decode(decompressed);
+                    message = JSON.parse(text);
+                } catch (decompErr) {
+                    console.error('Failed to decompress', decompErr);
+                    return;
+                }
+            } else {
+                message = JSON.parse(event.data);
+            }
         } catch (error) {
             return;
         }
@@ -54,6 +67,14 @@ function createSocketClient() {
             }
         },
     };
+}
+
+// Decompress gzip data using DecompressionStream (modern browsers)
+async function decompressGzip(buffer) {
+    const ds = new DecompressionStream('gzip');
+    const decompressedStream = new Response(buffer).body.pipeThrough(ds);
+    const decompressed = await new Response(decompressedStream).arrayBuffer();
+    return decompressed;
 }
 
 const socket = createSocketClient();

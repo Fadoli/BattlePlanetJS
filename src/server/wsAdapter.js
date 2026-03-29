@@ -1,3 +1,5 @@
+const zlib = require('zlib');
+
 function createServerSocketAdapter(rawSocket, request) {
     const listeners = {};
 
@@ -36,15 +38,18 @@ function createServerSocketAdapter(rawSocket, request) {
             }
             listeners[event].push(handler);
         },
-        emit(event, payload) {
+        emit(event, payload, compress = false) {
             if (rawSocket.readyState !== rawSocket.OPEN) {
                 return;
             }
 
-            rawSocket.send(JSON.stringify({
-                event,
-                payload,
-            }));
+            const envelope = JSON.stringify({ event, payload });
+            if (compress && envelope.length > 1024) {
+                // Compress only if payload is large enough
+                rawSocket.send(zlib.gzipSync(envelope));
+            } else {
+                rawSocket.send(envelope);
+            }
         },
         close() {
             rawSocket.close();
