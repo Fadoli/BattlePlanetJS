@@ -69,9 +69,25 @@ const cache = {
     // Cached materials by color (hex string) to avoid recreating materials
     materialCache: new Map(),
     // Shared sun material
-    sunMaterial: null
+    sunMaterial: null,
+    // Reusable Sets for per-frame color group tracking (avoid allocations)
+    asteroidColors: new Set(),
+    rockColors: new Set()
 };
 const perfState = { frameCount: 0, lastUpdatedAt: 0, sampleStartedAt: 0, totals: { frame: 0, background: 0, arena: 0, entities: 0, effects: 0, ui: 0 }, snapshot: null };
+// Entity types present in deltas and snapshots
+const _DELTA_TYPES = ['players', 'enemies', 'rocks', 'asteroids', 'explosions', 'suns'];
+// Persistent entity maps for applyDeltaToState — rebuilt once on setFullState, updated per delta
+const _baseStateMaps = {
+    players: new Map(), enemies: new Map(), rocks: new Map(),
+    asteroids: new Map(), explosions: new Map(), suns: new Map(),
+};
+// Per-list interpolation pools — objects reused across frames to eliminate per-frame GC pressure
+const _interpPools = {
+    players: [], enemies: [], rocks: [], asteroids: [], explosions: [], suns: [],
+};
+// Shared Map for interpolateList — avoids one Map allocation per call
+const _interpNextMap = new Map();
 let viewport = { width: DEFAULT_SIZE.width, height: DEFAULT_SIZE.height, centerX: DEFAULT_SIZE.width / 2, centerY: DEFAULT_SIZE.height / 2 }, baseState = null;
 let resizeTimestamp = 0;
 let zoom = DEFAULT_ZOOM;
@@ -236,10 +252,8 @@ function buildStarfield() {
     }
 
     const positions = new Float32Array(STAR_COUNT * 3);
-    const basePositions = new Float32Array(STAR_COUNT * 2); // Store base X,Y for parallax
     const parallaxFactors = new Float32Array(STAR_COUNT);
     const colors = new Float32Array(STAR_COUNT * 3);
-    const sizes = new Float32Array(STAR_COUNT);
 
     const random = randomFactory(12345); // Fixed seed for consistency
 
@@ -252,12 +266,10 @@ function buildStarfield() {
         // Z position: far stars at more negative Z, near stars at less negative Z
         const z = -200 - depth * 600; // Range -200 to -800, all in front of camera
 
-        positions[i3] = baseX; // will be updated per frame
+        positions[i3] = baseX;
         positions[i3 + 1] = baseY;
         positions[i3 + 2] = z;
 
-        basePositions[i * 2] = baseX;
-        basePositions[i * 2 + 1] = baseY;
         parallaxFactors[i] = 0.05 + depth * 0.3; // far stars move less
 
         // Color variation: white to blue/yellow tints
@@ -276,27 +288,46 @@ function buildStarfield() {
         colors[i3] = r;
         colors[i3 + 1] = g;
         colors[i3 + 2] = b;
-
-        sizes[i] = 0.5 + random() * 1.5;
     }
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('parallaxFactor', new THREE.BufferAttribute(parallaxFactors, 1));
 
-    // Store base positions and parallax factors for update loop
-    geometry.userData = { basePositions, parallaxFactors };
-
-    const material = new THREE.PointsMaterial({
-        size: 2,
-        map: cache.starTexture,
-        vertexColors: true,
+    // GPU-side parallax: camera position passed as uniform, parallax computed in vertex shader
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            uCameraPos: { value: new THREE.Vector2(0, 0) },
+            uPointSize: { value: 2.0 },
+            starTexture: { value: cache.starTexture },
+        },
+        vertexShader: [
+            'attribute float parallaxFactor;',
+            'attribute vec3 color;',
+            'varying vec3 vColor;',
+            'uniform vec2 uCameraPos;',
+            'uniform float uPointSize;',
+            'void main() {',
+            '  vColor = color;',
+            '  vec3 pos = position;',
+            '  pos.x += (1.0 - parallaxFactor) * uCameraPos.x;',
+            '  pos.y += (1.0 - parallaxFactor) * uCameraPos.y;',
+            '  vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);',
+            '  gl_PointSize = uPointSize * (300.0 / -mvPosition.z);',
+            '  gl_Position = projectionMatrix * mvPosition;',
+            '}',
+        ].join('\n'),
+        fragmentShader: [
+            'varying vec3 vColor;',
+            'uniform sampler2D starTexture;',
+            'void main() {',
+            '  gl_FragColor = vec4(vColor, 0.9) * texture2D(starTexture, gl_PointCoord);',
+            '}',
+        ].join('\n'),
         transparent: true,
-        opacity: 0.9,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
-        sizeAttenuation: true
     });
 
     cache.stars = new THREE.Points(geometry, material);
@@ -305,21 +336,8 @@ function buildStarfield() {
 
 function updateStarfield() {
     if (!cache.stars) return;
-
-    const positions = cache.stars.geometry.attributes.position.array;
-    const { basePositions, parallaxFactors } = cache.stars.geometry.userData;
-
-    for (let i = 0; i < basePositions.length / 2; i++) {
-        const i3 = i * 3;
-        const pf = parallaxFactors[i];
-        // Star world position = base + (1 - pf) * camera
-        // This creates parallax: screen position = (base - pf * camera) * zoom
-        positions[i3] = basePositions[i * 2] + (1 - pf) * camera.x;
-        positions[i3 + 1] = basePositions[i * 2 + 1] + (1 - pf) * camera.y;
-        // Z stays constant
-    }
-
-    cache.stars.geometry.attributes.position.needsUpdate = true;
+    // Single uniform update instead of iterating 2000 stars on CPU
+    cache.stars.material.uniforms.uCameraPos.value.set(camera.x, camera.y);
 }
 function buildArena() {
     const key = `${Math.round(networkState.worldRadius)}`;
@@ -502,77 +520,82 @@ function cloneState(state) {
 }
 
 function applyDeltaToState(state, delta) {
-    const types = ['players', 'enemies', 'rocks', 'asteroids', 'explosions', 'suns'];
-    for (const type of types) {
+    for (const type of _DELTA_TYPES) {
         const patches = delta[type];
         if (!patches) continue;
-        const arr = state[type];
-        // Build a Map for O(1) lookups
-        const entityMap = new Map(arr.map(e => [e.id, e]));
+        const entityMap = _baseStateMaps[type];
         for (const patch of patches) {
             const id = patch.id;
             if (patch._removed) {
                 entityMap.delete(id);
             } else {
-                let entity = entityMap.get(id);
+                const entity = entityMap.get(id);
                 if (!entity) {
-                    const { id: _, ...rest } = patch;
-                    entity = { id, ...rest };
-                    entityMap.set(id, entity);
+                    entityMap.set(id, { ...patch });
                 } else {
-                    for (const key of Object.keys(patch)) {
-                        if (key === 'id' || key === '_removed') continue;
-                        entity[key] = patch[key];
-                    }
+                    // Immutable update: new object so existing snapshot entity references remain valid
+                    entityMap.set(id, Object.assign({}, entity, patch));
                 }
             }
         }
-        // Rebuild array from map values
-        state[type] = Array.from(entityMap.values());
+        // Rebuild array from updated map
+        const arr = [];
+        entityMap.forEach(e => arr.push(e));
+        state[type] = arr;
     }
 }
 function interpolateEntity(previous, next, alpha) { const base = next || previous; if (!previous || !next) return { ...base }; return { ...base, x: lerp(previous.x, next.x, alpha), y: lerp(previous.y, next.y, alpha), vx: typeof previous.vx === "number" && typeof next.vx === "number" ? lerp(previous.vx, next.vx, alpha) : base.vx, vy: typeof previous.vy === "number" && typeof next.vy === "number" ? lerp(previous.vy, next.vy, alpha) : base.vy, radius: typeof previous.radius === "number" && typeof next.radius === "number" ? lerp(previous.radius, next.radius, alpha) : base.radius, angle: typeof previous.angle === "number" && typeof next.angle === "number" ? lerpAngle(previous.angle, next.angle, alpha) : base.angle, modifier: typeof previous.modifier === "number" && typeof next.modifier === "number" ? lerp(previous.modifier, next.modifier, alpha) : base.modifier }; }
-function interpolateList(previousList, nextList, alpha) {
-    const result = [];
-
+function _interpolateEntityInto(out, previous, next, alpha) {
+    Object.assign(out, next || previous);
+    if (!previous || !next) return out;
+    out.x = lerp(previous.x, next.x, alpha);
+    out.y = lerp(previous.y, next.y, alpha);
+    if (typeof previous.vx === "number" && typeof next.vx === "number") out.vx = lerp(previous.vx, next.vx, alpha);
+    if (typeof previous.vy === "number" && typeof next.vy === "number") out.vy = lerp(previous.vy, next.vy, alpha);
+    if (typeof previous.radius === "number" && typeof next.radius === "number") out.radius = lerp(previous.radius, next.radius, alpha);
+    if (typeof previous.angle === "number" && typeof next.angle === "number") out.angle = lerpAngle(previous.angle, next.angle, alpha);
+    if (typeof previous.modifier === "number" && typeof next.modifier === "number") out.modifier = lerp(previous.modifier, next.modifier, alpha);
+    return out;
+}
+function interpolateList(pool, previousList, nextList, alpha) {
+    let outIdx = 0;
     if (alpha <= 0) {
-        // No interpolation, only previous
         for (const entry of previousList) {
-            result.push({ ...entry });
+            if (outIdx >= pool.length) pool.push({});
+            Object.assign(pool[outIdx++], entry);
         }
-        return result;
+        pool.length = outIdx;
+        return pool;
     }
     if (alpha >= 1) {
-        // Only next snapshot
         for (const entry of nextList) {
-            result.push({ ...entry });
+            if (outIdx >= pool.length) pool.push({});
+            Object.assign(pool[outIdx++], entry);
         }
-        return result;
+        pool.length = outIdx;
+        return pool;
     }
 
-    // Build map of next entities for O(1) lookup
-    const nextMap = new Map(nextList.map((entry) => [entry.id, entry]));
+    _interpNextMap.clear();
+    for (const entry of nextList) _interpNextMap.set(entry.id, entry);
 
-    // Process previous entities: interpolate or keep
     for (const prev of previousList) {
-        const next = nextMap.get(prev.id);
+        const next = _interpNextMap.get(prev.id);
         if (next) {
-            result.push(interpolateEntity(prev, next, alpha));
-            nextMap.delete(prev.id); // Mark as processed
-        } else if (alpha < 1) {
-            // Removed entity
-            result.push({ ...prev });
+            if (outIdx >= pool.length) pool.push({});
+            _interpolateEntityInto(pool[outIdx++], prev, next, alpha);
+            _interpNextMap.delete(prev.id);
+        } else {
+            if (outIdx >= pool.length) pool.push({});
+            Object.assign(pool[outIdx++], prev);
         }
     }
-
-    // Remaining entries in nextMap are new entities
-    for (const next of nextMap.values()) {
-        if (alpha > 0) {
-            result.push({ ...next });
-        }
+    for (const next of _interpNextMap.values()) {
+        if (outIdx >= pool.length) pool.push({});
+        Object.assign(pool[outIdx++], next);
     }
-
-    return result;
+    pool.length = outIdx;
+    return pool;
 }
 function interpolatedState() {
     if (snapshotBuffer.length === 0) return networkState;
@@ -599,6 +622,7 @@ function interpolatedState() {
     const alpha = Math.max(0, Math.min(1, (renderServerTime - previous.serverTime) / duration));
 
     const interpolatedSuns = interpolateList(
+        _interpPools.suns,
         previous.suns || [previous.sun],
         next.suns || [next.sun],
         alpha
@@ -611,11 +635,11 @@ function interpolatedState() {
         worldRadius: lerp(previous.worldRadius, next.worldRadius, alpha),
         sun: interpolateEntity(previous.sun, next.sun, alpha),
         suns: interpolatedSuns,
-        players: interpolateList(previous.players, next.players, alpha),
-        enemies: interpolateList(previous.enemies, next.enemies, alpha),
-        rocks: interpolateList(previous.rocks, next.rocks, alpha),
-        asteroids: interpolateList(previous.asteroids || [], next.asteroids || [], alpha),
-        explosions: interpolateList(previous.explosions || [], next.explosions || [], alpha),
+        players: interpolateList(_interpPools.players, previous.players, next.players, alpha),
+        enemies: interpolateList(_interpPools.enemies, previous.enemies, next.enemies, alpha),
+        rocks: interpolateList(_interpPools.rocks, previous.rocks, next.rocks, alpha),
+        asteroids: interpolateList(_interpPools.asteroids, previous.asteroids || [], next.asteroids || [], alpha),
+        explosions: interpolateList(_interpPools.explosions, previous.explosions || [], next.explosions || [], alpha),
         playerId: next.playerId || previous.playerId
     };
 }
@@ -954,58 +978,65 @@ function getThreeObject(id, type, creator) {
     return obj;
 }
 
+// Hoisted temporaries for renderInstanced — avoids allocations on the hot path
+const _instanceMatrix = new THREE.Matrix4();
+const _instancePosition = new THREE.Vector3();
+const _instanceQuaternion = new THREE.Quaternion(0, 0, 0, 1);
+const _instanceScale = new THREE.Vector3();
+const INSTANCED_MESH_CAPACITY = 256; // over-allocate to avoid GPU buffer churn
+
 function renderInstanced(entities, geometry, zIndex, groupKey) {
     if (entities.length === 0) return;
     
-    // Group by color
+    // Group by numeric color (avoid string conversion)
     const byColor = new Map();
-    entities.forEach(entity => {
-        const colorHex = '0x' + entity.color.toString(16);
-        if (!byColor.has(colorHex)) byColor.set(colorHex, []);
-        byColor.get(colorHex).push(entity);
-    });
+    for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        const colorKey = entity.color;
+        let bucket = byColor.get(colorKey);
+        if (!bucket) { bucket = []; byColor.set(colorKey, bucket); }
+        bucket.push(entity);
+    }
     
-    const matrix = new THREE.Matrix4();
-    const position = new THREE.Vector3();
-    const quaternion = new THREE.Quaternion();
-    quaternion.set(0, 0, 0, 1);
-    const scale = new THREE.Vector3();
-    
-    byColor.forEach((ents, colorHex) => {
-        const id = `${groupKey}-${colorHex}`;
-        let material = cache.materialCache.get(colorHex);
+    byColor.forEach((ents, colorKey) => {
+        const id = `${groupKey}-${colorKey}`;
+        let material = cache.materialCache.get(colorKey);
         if (!material) {
-            material = new THREE.MeshBasicMaterial({ color: parseInt(colorHex), side: THREE.DoubleSide });
-            cache.materialCache.set(colorHex, material);
+            material = new THREE.MeshBasicMaterial({ color: colorKey, side: THREE.DoubleSide });
+            cache.materialCache.set(colorKey, material);
         }
         
-        // Check if cached mesh has correct instance count
         let instancedMesh = cache.threeObjects.get(id);
-        if (instancedMesh && instancedMesh.userData.expectedCount !== ents.length) {
-            // Count changed, dispose and remove old mesh
+        
+        // Only recreate if capacity is exceeded (rare), not on every count change
+        if (instancedMesh && ents.length > instancedMesh.userData.capacity) {
             scene.remove(instancedMesh);
             cache.threeObjects.delete(id);
             instancedMesh = null;
         }
         
         if (!instancedMesh) {
-            // Create new InstancedMesh with correct count
-            instancedMesh = new THREE.InstancedMesh(geometry, material, ents.length);
+            // Allocate with generous capacity to avoid future reallocations
+            const capacity = Math.max(INSTANCED_MESH_CAPACITY, ents.length * 2);
+            instancedMesh = new THREE.InstancedMesh(geometry, material, capacity);
             instancedMesh.visible = true;
-            instancedMesh.userData.expectedCount = ents.length;
+            instancedMesh.frustumCulled = false;
+            instancedMesh.userData.capacity = capacity;
             scene.add(instancedMesh);
             cache.threeObjects.set(id, instancedMesh);
         }
         
-        let visibleCount = 0;
-        let radius = ents[0].radius || 1;
-        scale.set(radius, radius, 1);
-        ents.forEach((entity, idx) => {
-            position.set(entity.x, entity.y, zIndex);
-            visibleCount++;
-            matrix.compose(position, quaternion, scale);
-            instancedMesh.setMatrixAt(idx, matrix);
-        });
+        // Set .count to actual entity count — only renders this many instances
+        instancedMesh.count = ents.length;
+        instancedMesh.visible = true;
+        
+        const radius = ents[0].radius || 1;
+        _instanceScale.set(radius, radius, 1);
+        for (let i = 0; i < ents.length; i++) {
+            _instancePosition.set(ents[i].x, ents[i].y, zIndex);
+            _instanceMatrix.compose(_instancePosition, _instanceQuaternion, _instanceScale);
+            instancedMesh.setMatrixAt(i, _instanceMatrix);
+        }
         
         instancedMesh.instanceMatrix.needsUpdate = true;
     });
@@ -1096,11 +1127,10 @@ function render() {
 
     (networkState.explosions || []).forEach((explosion, index) => {
         const id = `explosion-${explosion.id || index}`;
-        const colorHex = '0x' + explosion.color.toString(16);
-        let material = cache.materialCache.get(colorHex);
+        let material = cache.materialCache.get(explosion.color);
         if (!material) {
             material = new THREE.MeshBasicMaterial({ color: explosion.color, transparent: true, side: THREE.DoubleSide });
-            cache.materialCache.set(colorHex, material);
+            cache.materialCache.set(explosion.color, material);
         }
         const obj = getThreeObject(id, "explosion", () => {
             return new THREE.Mesh(cache.geometries.ring, material);
@@ -1116,19 +1146,27 @@ function render() {
     const currentIds = cache.currentIds;
     currentIds.clear();
     suns.forEach((_, i) => currentIds.add(`sun-${i}`));
-    // Track instanced entity keys by grouping color
-    const asteroidColors = new Set();
-    (networkState.asteroids || []).forEach(a => asteroidColors.add(`asteroids-0x${a.color.toString(16)}`));
+    // Track instanced entity keys by grouping color (numeric keys)
+    const { asteroidColors, rockColors } = cache;
+    asteroidColors.clear();
+    (networkState.asteroids || []).forEach(a => asteroidColors.add(`asteroids-${a.color}`));
     asteroidColors.forEach(key => currentIds.add(key));
-    const rockColors = new Set();
-    networkState.rocks.forEach(r => rockColors.add(`rocks-0x${r.color.toString(16)}`));
+    rockColors.clear();
+    networkState.rocks.forEach(r => rockColors.add(`rocks-${r.color}`));
     rockColors.forEach(key => currentIds.add(key));
     networkState.players.forEach(p => currentIds.add(p.id));
     networkState.enemies.forEach(e => currentIds.add(e.id));
     (networkState.explosions || []).forEach((e, i) => currentIds.add(`explosion-${e.id || i}`));
 
     cache.threeObjects.forEach((obj, id) => {
-        if (!currentIds.has(id)) obj.visible = false;
+        if (currentIds.has(id)) return;
+        // Fully dispose explosion meshes — they have unique IDs and are never reused
+        if (id.startsWith('explosion-')) {
+            scene.remove(obj);
+            cache.threeObjects.delete(id);
+        } else {
+            obj.visible = false;
+        }
     });
 
     const effectsEnd = perfNow();
@@ -1158,10 +1196,36 @@ function frame(now) {
     if (isRunning) animationFrame = window.requestAnimationFrame(frame);
 }
 
+// Build a snapshot cheaply using structural sharing: unchanged entity arrays are shared
+// from prevSnapshot rather than deep-cloned. Safe because applyDeltaToState does immutable
+// entity updates (new objects on change), so old snapshot references are never mutated.
+function _buildSnapshotFromDelta(baseState, delta, prevSnapshot) {
+    const snapshot = {
+        status: baseState.status,
+        serverTime: baseState.serverTime,
+        tickNumber: baseState.tickNumber,
+        worldRadius: baseState.worldRadius,
+        sun: baseState.sun,
+        playerId: baseState.playerId,
+    };
+    for (const type of _DELTA_TYPES) {
+        snapshot[type] = (!delta[type] && prevSnapshot)
+            ? prevSnapshot[type]  // no patches this tick: share prev snapshot's array
+            : baseState[type];    // patched: use the new array from applyDeltaToState
+    }
+    return snapshot;
+}
+
 const battlePlanetGame = {
     start() { if (isRunning) return; isRunning = true; lastRenderAt = 0; animationFrame = window.requestAnimationFrame(frame); }, stop() { isRunning = false; if (animationFrame !== null) { window.cancelAnimationFrame(animationFrame); animationFrame = null; } }, resizeToContainer() { if (Date.now() - resizeTimestamp < RESIZE_THROTTLE_MS) return; resizeTimestamp = Date.now(); resizeBackingStore(); buildStarfield(); canvas.style.display = "block"; canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`; render(); }, setInputSender(sender) { inputSender = sender; }, setFullState(fullState) {
         // Use fullState directly as mutable base (no clone)
         baseState = fullState;
+        // Rebuild persistent entity maps so applyDeltaToState can update from here
+        for (const type of _DELTA_TYPES) {
+            _baseStateMaps[type].clear();
+            const arr = fullState[type] || [];
+            for (const e of arr) _baseStateMaps[type].set(e.id, e);
+        }
 
         // Record latency
         const snapshot = cloneState(fullState);
@@ -1212,7 +1276,8 @@ const battlePlanetGame = {
         if (meta && meta.playerId !== undefined) {
             baseState.playerId = meta.playerId;
         }
-        const snapshot = cloneState(baseState);
+        const prevSnapshot = snapshotBuffer.length > 0 ? snapshotBuffer[snapshotBuffer.length - 1] : null;
+        const snapshot = _buildSnapshotFromDelta(baseState, delta, prevSnapshot);
         if (meta) {
             if (meta.serverTime !== undefined) snapshot.serverTime = meta.serverTime;
             if (meta.tickNumber !== undefined) snapshot.tickNumber = meta.tickNumber;
@@ -1261,6 +1326,7 @@ const battlePlanetGame = {
         resolvedRoundStatus = null;
         roundHistory = new Map();
         leaderboardElement.hidden = true;
+        for (const type of _DELTA_TYPES) { _baseStateMaps[type].clear(); _interpPools[type].length = 0; }
         cache.threeObjects.forEach(obj => {
             scene.remove(obj);
             // Dispose InstancedMesh geometry
