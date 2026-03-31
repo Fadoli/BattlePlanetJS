@@ -954,6 +954,73 @@ function getThreeObject(id, type, creator) {
     return obj;
 }
 
+function renderInstanced(entities, geometry, zIndex, groupKey) {
+    if (entities.length === 0) return;
+    
+    // Group by color
+    const byColor = new Map();
+    entities.forEach(entity => {
+        const colorHex = '0x' + entity.color.toString(16);
+        if (!byColor.has(colorHex)) byColor.set(colorHex, []);
+        byColor.get(colorHex).push(entity);
+    });
+    
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    
+    byColor.forEach((ents, colorHex) => {
+        const id = `${groupKey}-${colorHex}`;
+        let material = cache.materialCache.get(colorHex);
+        if (!material) {
+            material = new THREE.MeshBasicMaterial({ color: parseInt(colorHex), side: THREE.DoubleSide });
+            cache.materialCache.set(colorHex, material);
+        }
+        
+        // Check if cached mesh has correct instance count
+        let instancedMesh = cache.threeObjects.get(id);
+        if (instancedMesh && instancedMesh.userData.expectedCount !== ents.length) {
+            // Count changed, dispose and remove old mesh
+            scene.remove(instancedMesh);
+            cache.threeObjects.delete(id);
+            instancedMesh = null;
+        }
+        
+        if (!instancedMesh) {
+            // Create new InstancedMesh with correct count
+            instancedMesh = new THREE.InstancedMesh(geometry, material, ents.length);
+            instancedMesh.userData.expectedCount = ents.length;
+            scene.add(instancedMesh);
+            cache.threeObjects.set(id, instancedMesh);
+        }
+        
+        let visibleCount = 0;
+        ents.forEach((entity, idx) => {
+            const screenX = worldToScreenX(entity.x);
+            const screenY = worldToScreenY(entity.y);
+            const screenRadius = worldToScreenSize(entity.radius);
+            
+            position.set(entity.x, entity.y, zIndex);
+            quaternion.set(0, 0, 0, 1);
+            
+            if (isCircleVisible(screenX, screenY, screenRadius)) {
+                scale.set(entity.radius, entity.radius, 1);
+                visibleCount++;
+            } else {
+                // Scale invisible instances to near-zero
+                scale.set(0.0001, 0.0001, 1);
+            }
+            
+            matrix.compose(position, quaternion, scale);
+            instancedMesh.setMatrixAt(idx, matrix);
+        });
+        
+        instancedMesh.instanceMatrix.needsUpdate = true;
+        instancedMesh.visible = visibleCount > 0;
+    });
+}
+
 function renderPlanet(planet, isLocalPlayer) {
     const x = worldToScreenX(planet.x);
     const y = worldToScreenY(planet.y);
@@ -1028,37 +1095,8 @@ function render() {
     const arenaDrawEnd = perfNow();
     const entitiesStart = perfNow();
 
-    (networkState.asteroids || []).forEach((asteroid, index) => {
-        const id = `asteroid-${asteroid.id || index}`;
-        const colorHex = '0x' + asteroid.color.toString(16);
-        let material = cache.materialCache.get(colorHex);
-        if (!material) {
-            material = new THREE.MeshBasicMaterial({ color: asteroid.color, side: THREE.DoubleSide });
-            cache.materialCache.set(colorHex, material);
-        }
-        const obj = getThreeObject(id, "asteroid", () => {
-            return new THREE.Mesh(cache.geometries.circle16, material);
-        });
-        obj.position.set(asteroid.x, asteroid.y, 3);
-        obj.scale.set(asteroid.radius, asteroid.radius, 1);
-        obj.visible = isCircleVisible(worldToScreenX(asteroid.x), worldToScreenY(asteroid.y), worldToScreenSize(asteroid.radius));
-    });
-
-    networkState.rocks.forEach((rock, index) => {
-        const id = `rock-${rock.id || index}`;
-        const colorHex = '0x' + rock.color.toString(16);
-        let material = cache.materialCache.get(colorHex);
-        if (!material) {
-            material = new THREE.MeshBasicMaterial({ color: rock.color, side: THREE.DoubleSide });
-            cache.materialCache.set(colorHex, material);
-        }
-        const obj = getThreeObject(id, "rock", () => {
-            return new THREE.Mesh(cache.geometries.circle8, material);
-        });
-        obj.position.set(rock.x, rock.y, 4);
-        obj.scale.set(rock.radius, rock.radius, 1);
-        obj.visible = isCircleVisible(worldToScreenX(rock.x), worldToScreenY(rock.y), worldToScreenSize(rock.radius));
-    });
+    renderInstanced(networkState.asteroids || [], cache.geometries.circle16, 3, 'asteroids');
+    renderInstanced(networkState.rocks || [], cache.geometries.circle8, 4, 'rocks');
 
     for (const player of networkState.players) renderPlanet(renderStateForPlanet(player, player.id === networkState.playerId), player.id === networkState.playerId);
     for (const enemy of networkState.enemies) renderPlanet(enemy, false);
@@ -1088,8 +1126,13 @@ function render() {
     const currentIds = cache.currentIds;
     currentIds.clear();
     suns.forEach((_, i) => currentIds.add(`sun-${i}`));
-    (networkState.asteroids || []).forEach((a, i) => currentIds.add(`asteroid-${a.id || i}`));
-    networkState.rocks.forEach((r, i) => currentIds.add(`rock-${r.id || i}`));
+    // Track instanced entity keys by grouping color
+    const asteroidColors = new Set();
+    (networkState.asteroids || []).forEach(a => asteroidColors.add(`asteroids-0x${a.color.toString(16)}`));
+    asteroidColors.forEach(key => currentIds.add(key));
+    const rockColors = new Set();
+    networkState.rocks.forEach(r => rockColors.add(`rocks-0x${r.color.toString(16)}`));
+    rockColors.forEach(key => currentIds.add(key));
     networkState.players.forEach(p => currentIds.add(p.id));
     networkState.enemies.forEach(e => currentIds.add(e.id));
     (networkState.explosions || []).forEach((e, i) => currentIds.add(`explosion-${e.id || i}`));
@@ -1228,7 +1271,11 @@ const battlePlanetGame = {
         resolvedRoundStatus = null;
         roundHistory = new Map();
         leaderboardElement.hidden = true;
-        cache.threeObjects.forEach(obj => scene.remove(obj));
+        cache.threeObjects.forEach(obj => {
+            scene.remove(obj);
+            // Dispose InstancedMesh geometry
+            if (obj.geometry) obj.geometry.dispose();
+        });
         cache.threeObjects.clear();
         // Dispose cached materials and textures
         cache.materialCache.forEach(mat => mat.dispose());
