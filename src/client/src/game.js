@@ -968,6 +968,7 @@ function renderInstanced(entities, geometry, zIndex, groupKey) {
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
     const quaternion = new THREE.Quaternion();
+    quaternion.set(0, 0, 0, 1);
     const scale = new THREE.Vector3();
     
     byColor.forEach((ents, colorHex) => {
@@ -990,34 +991,23 @@ function renderInstanced(entities, geometry, zIndex, groupKey) {
         if (!instancedMesh) {
             // Create new InstancedMesh with correct count
             instancedMesh = new THREE.InstancedMesh(geometry, material, ents.length);
+            instancedMesh.visible = true;
             instancedMesh.userData.expectedCount = ents.length;
             scene.add(instancedMesh);
             cache.threeObjects.set(id, instancedMesh);
         }
         
         let visibleCount = 0;
+        let radius = ents[0].radius || 1;
+        scale.set(radius, radius, 1);
         ents.forEach((entity, idx) => {
-            const screenX = worldToScreenX(entity.x);
-            const screenY = worldToScreenY(entity.y);
-            const screenRadius = worldToScreenSize(entity.radius);
-            
             position.set(entity.x, entity.y, zIndex);
-            quaternion.set(0, 0, 0, 1);
-            
-            if (isCircleVisible(screenX, screenY, screenRadius)) {
-                scale.set(entity.radius, entity.radius, 1);
-                visibleCount++;
-            } else {
-                // Scale invisible instances to near-zero
-                scale.set(0.0001, 0.0001, 1);
-            }
-            
+            visibleCount++;
             matrix.compose(position, quaternion, scale);
             instancedMesh.setMatrixAt(idx, matrix);
         });
         
         instancedMesh.instanceMatrix.needsUpdate = true;
-        instancedMesh.visible = visibleCount > 0;
     });
 }
 
