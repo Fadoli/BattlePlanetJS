@@ -22,6 +22,10 @@
     padding: 0;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 html,
 body {
     min-height: 100%;

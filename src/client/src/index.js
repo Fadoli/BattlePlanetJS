@@ -1,3 +1,5 @@
+import "./game.js";
+
 function createSocketClient() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${window.location.host}`);
@@ -5,348 +7,182 @@ function createSocketClient() {
     const queue = [];
 
     socket.addEventListener("open", () => {
-        while (queue.length > 0) {
-            socket.send(queue.shift());
-        }
+        while (queue.length) socket.send(queue.shift());
     });
-
     socket.addEventListener("message", async (event) => {
-        let message;
         try {
-            if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
-                // Decompress gzip-compressed binary data
-                const arrayBuffer = event.data instanceof ArrayBuffer ? event.data : await event.data.arrayBuffer();
-                try {
-                    const decompressed = await decompressGzip(arrayBuffer);
-                    const text = new TextDecoder().decode(decompressed);
-                    message = JSON.parse(text);
-                } catch (decompErr) {
-                    console.error('Failed to decompress', decompErr);
-                    return;
-                }
-            } else {
-                message = JSON.parse(event.data);
-            }
-        } catch (error) {
-            return;
-        }
-
-        if (!message || typeof message.event !== "string") {
-            return;
-        }
-
-        const handlers = listeners[message.event] || [];
-        handlers.forEach((handler) => handler(message.payload));
+            const data = event.data instanceof ArrayBuffer || event.data instanceof Blob
+                ? new TextDecoder().decode(await new Response(new Response(event.data).body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer())
+                : event.data;
+            const message = JSON.parse(data);
+            if (typeof message.event === "string") (listeners[message.event] || []).forEach((handler) => handler(message.payload));
+        } catch { /* Ignore malformed or unsupported messages. */ }
     });
-
-    socket.addEventListener("close", () => {
-        const handlers = listeners.disconnect || [];
-        handlers.forEach((handler) => handler());
-    });
-
+    socket.addEventListener("close", () => (listeners.disconnect || []).forEach((handler) => handler()));
     return {
-        on(event, handler) {
-            if (!listeners[event]) {
-                listeners[event] = [];
-            }
-            listeners[event].push(handler);
-        },
+        on(event, handler) { (listeners[event] ||= []).push(handler); },
         emit(event, payload) {
-            const serialized = JSON.stringify({
-                event,
-                payload,
-            });
-
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(serialized);
-                return;
-            }
-
-            if (socket.readyState === WebSocket.CONNECTING) {
-                queue.push(serialized);
-            }
+            const message = JSON.stringify({ event, payload });
+            if (socket.readyState === WebSocket.OPEN) socket.send(message);
+            else if (socket.readyState === WebSocket.CONNECTING) queue.push(message);
         },
     };
-}
-
-// Decompress gzip data using DecompressionStream (modern browsers)
-async function decompressGzip(buffer) {
-    const ds = new DecompressionStream('gzip');
-    const decompressedStream = new Response(buffer).body.pipeThrough(ds);
-    const decompressed = await new Response(decompressedStream).arrayBuffer();
-    return decompressed;
 }
 
 const socket = createSocketClient();
 let token = localStorage.getItem("token");
 let username = localStorage.getItem("username");
 let gameId;
-const fullscreenButton = document.getElementById("fullscreenToggle");
-const LOBBY_ARENA_LABELS = {
-    compact: "Compact",
-    standard: "Standard",
-    wide: "Wide",
-};
-const LOBBY_STAR_LABELS = {
-    single: "Single sun",
-    binary: "Binary suns",
-};
-const LOBBY_HAZARD_LABELS = {
-    none: "Clear orbit",
-    asteroids: "Asteroids",
-};
-const LOBBY_AI_LABELS = {
-    easy: "Easy AI",
-    standard: "Standard AI",
-    hard: "Hard AI",
-    ace: "Ace AI",
-};
-const LOBBY_MODE_LABELS = {
-    "team-vs-bots": "Team vs Bots",
-    "ffa": "Free-for-all",
-    "bots-ffa": "Bots FFA",
-};
-
-function isTypingTarget(target) {
-    if (!target) {
-        return false;
-    }
-
-    const tagName = target.tagName ? target.tagName.toLowerCase() : "";
-    return tagName === "input" || tagName === "textarea" || target.isContentEditable;
-}
+const $ = (selector) => document.querySelector(selector);
+const login = $("#login");
+const content = $("#content");
+const lobby = $("#lobby");
+const gameScreen = $("#gameScreen");
+const games = $("#games");
+const messages = $("#messages");
+const side = $("#side");
+const fullscreenButton = $("#fullscreenToggle");
+const LOBBY_ARENA_LABELS = { compact: "Compact", standard: "Standard", wide: "Wide" };
+const LOBBY_STAR_LABELS = { single: "Single sun", binary: "Binary suns" };
+const LOBBY_HAZARD_LABELS = { none: "Clear orbit", asteroids: "Asteroids" };
+const LOBBY_AI_LABELS = { easy: "Easy AI", standard: "Standard AI", hard: "Hard AI", ace: "Ace AI" };
+const LOBBY_MODE_LABELS = { "team-vs-bots": "Team vs Bots", ffa: "Free-for-all", "bots-ffa": "Bots FFA" };
 
 function updateUserVisibility() {
-    if (!username) {
-        $("#login").show();
-        $("#content").hide();
-        return;
-    }
-
-    $("#login").hide();
-    $("#content").show();
+    login.hidden = Boolean(username);
+    content.hidden = !username;
 }
 
 function updateGameVisibility() {
-    if (!gameId) {
-        $("#lobby").show();
-        $("#gameScreen").hide();
+    const inGame = Boolean(gameId);
+    lobby.hidden = inGame;
+    gameScreen.hidden = !inGame;
+    if (inGame) {
+        BattlePlanetGame.start();
+        BattlePlanetGame.resizeToContainer();
+    } else {
         BattlePlanetGame.stop();
         BattlePlanetGame.clearState();
-        return;
     }
-
-    $("#lobby").hide();
-    $("#gameScreen").show();
-    BattlePlanetGame.start();
-    BattlePlanetGame.resizeToContainer();
 }
 
 function appendChatMessage(message) {
-    const messages = $("#messages");
-    const items = messages.children();
-
-    if (items.length > 50) {
-        items[0].remove();
-    }
-
-    messages.append($("<li>").text(message));
-
-    const side = $("#side");
-    side.scrollTop(side.prop("scrollHeight"));
-}
-
-function renderLobbyList(request) {
-    const list = $("#games");
-    const { action, data } = request;
-
-    if (action === "set") {
-        list.html("");
-    }
-
-    data.forEach((game) => {
-        if (action === "remove") {
-            $(`#${game.uuid}`).remove();
-            return;
-        }
-
-        if ($(`#${game.uuid}`).length > 0) {
-            const updatedListing = createLobbyListing(game);
-            updatedListing.on("click", () => {
-                socket.emit("lobbyListJoin", {
-                    uuid: game.uuid,
-                });
-            });
-            $(`#${game.uuid}`).replaceWith(updatedListing);
-            return;
-        }
-
-        const listing = createLobbyListing(game);
-        listing.on("click", () => {
-            socket.emit("lobbyListJoin", {
-                uuid: game.uuid,
-            });
-        });
-        list.append(listing);
-    });
+    if (messages.children.length >= 50) messages.firstElementChild.remove();
+    const item = document.createElement("li");
+    item.textContent = message;
+    messages.append(item);
+    side.scrollTop = side.scrollHeight;
 }
 
 function createLobbyListing(game) {
     const settings = game.settings || {};
-    const arenaLabel = LOBBY_ARENA_LABELS[settings.arenaSize] || "Standard";
-    const starLabel = LOBBY_STAR_LABELS[settings.starMode] || "Single sun";
-    const hazardLabel = LOBBY_HAZARD_LABELS[settings.hazards] || "Clear orbit";
-    const aiLabel = LOBBY_AI_LABELS[settings.aiDifficulty] || "Standard AI";
-    const modeLabel = LOBBY_MODE_LABELS[settings.gameMode] || "Team vs Bots";
-    const botCount = Number.isFinite(settings.botCount) ? settings.botCount : 2;
-    const visibilityLabel = settings.isPublic === false ? "Private match" : "Public lobby";
-    const accessLabel = settings.isPublic === false ? "Invite only" : "Open join";
-    const listing = $(`<article id="${game.uuid}" class="gameListing">`);
-
-    listing.append(`
-        <div class="gameListingHeader">
-            <div>
-                <div class="gameListingTitle">${escapeHtml(game.name || "BattlePlanet")}</div>
-                <div class="gameListingMeta">${visibilityLabel}</div>
-            </div>
-            <div class="lobbyPopulation">${game.count} pilots</div>
-        </div>
-        <div class="lobbyTagRow">
-            <span class="lobbyTag">${arenaLabel} arena</span>
-            <span class="lobbyTag">${modeLabel}</span>
-            <span class="lobbyTag">${starLabel}</span>
-            <span class="lobbyTag">${hazardLabel}</span>
-            <span class="lobbyTag">${aiLabel}</span>
-            <span class="lobbyTag">${botCount} bots</span>
-            <span class="lobbyTag">${accessLabel}</span>
-        </div>
-        <div class="lobbyJoinHint">Click to join</div>
-    `);
-
+    const labels = [
+        `${LOBBY_ARENA_LABELS[settings.arenaSize] || "Standard"} arena`,
+        LOBBY_MODE_LABELS[settings.gameMode] || "Team vs Bots",
+        LOBBY_STAR_LABELS[settings.starMode] || "Single sun",
+        LOBBY_HAZARD_LABELS[settings.hazards] || "Clear orbit",
+        LOBBY_AI_LABELS[settings.aiDifficulty] || "Standard AI",
+        `${Number.isFinite(settings.botCount) ? settings.botCount : 2} bots`,
+        settings.isPublic === false ? "Invite only" : "Open join",
+    ];
+    const listing = document.createElement("article");
+    listing.id = game.uuid;
+    listing.className = "gameListing";
+    const header = document.createElement("div");
+    header.className = "gameListingHeader";
+    const titleGroup = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "gameListingTitle";
+    title.textContent = game.name || "BattlePlanet";
+    const meta = document.createElement("div");
+    meta.className = "gameListingMeta";
+    meta.textContent = settings.isPublic === false ? "Private match" : "Public lobby";
+    titleGroup.append(title, meta);
+    const population = document.createElement("div");
+    population.className = "lobbyPopulation";
+    population.textContent = `${game.count} pilots`;
+    header.append(titleGroup, population);
+    const tagRow = document.createElement("div");
+    tagRow.className = "lobbyTagRow";
+    labels.forEach((label) => {
+        const tag = document.createElement("span");
+        tag.className = "lobbyTag";
+        tag.textContent = label;
+        tagRow.append(tag);
+    });
+    const hint = document.createElement("div");
+    hint.className = "lobbyJoinHint";
+    hint.textContent = "Click to join";
+    listing.append(header, tagRow, hint);
+    listing.addEventListener("click", () => socket.emit("lobbyListJoin", { uuid: game.uuid }));
     return listing;
 }
 
-function escapeHtml(value) {
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll("\"", "&quot;")
-        .replaceAll("'", "&#39;");
+function renderLobbyList({ action, data }) {
+    if (action === "set") games.replaceChildren();
+    data.forEach((game) => {
+        const existing = document.getElementById(game.uuid);
+        if (action === "remove") return existing?.remove();
+        const listing = createLobbyListing(game);
+        if (existing) existing.replaceWith(listing);
+        else games.append(listing);
+    });
 }
 
 function getLobbySettings() {
     return {
-        botCount: Number.parseInt($("#lobbyBotCount").val(), 10) || 2,
-        arenaSize: $("#lobbyArenaSize").val() || "standard",
-        starMode: $("#lobbyStarMode").val() || "single",
-        hazards: $("#lobbyHazards").val() || "none",
-        aiDifficulty: $("#lobbyAiDifficulty").val() || "standard",
-        gameMode: $("#lobbyGameMode").val() || "team-vs-bots",
-        isPublic: $("#lobbyPublicInput").is(":checked"),
+        botCount: Number.parseInt($("#lobbyBotCount").value, 10) || 2,
+        arenaSize: $("#lobbyArenaSize").value || "standard",
+        starMode: $("#lobbyStarMode").value || "single",
+        hazards: $("#lobbyHazards").value || "none",
+        aiDifficulty: $("#lobbyAiDifficulty").value || "standard",
+        gameMode: $("#lobbyGameMode").value || "team-vs-bots",
+        isPublic: $("#lobbyPublicInput").checked,
     };
 }
 
-$(function onReady() {
-    if (fullscreenButton) {
-        fullscreenButton.addEventListener("click", async () => {
-            const fullscreenRoot = document.getElementById("main");
-            if (!fullscreenRoot) {
-                return;
-            }
-
-            if (document.fullscreenElement === fullscreenRoot) {
-                await document.exitFullscreen();
-                return;
-            }
-
-            await fullscreenRoot.requestFullscreen();
-        });
-
-        document.addEventListener("fullscreenchange", () => {
-            const fullscreenRoot = document.getElementById("main");
-            const isFullscreen = document.fullscreenElement === fullscreenRoot;
-            fullscreenButton.textContent = isFullscreen ? "Exit Fullscreen" : "Fullscreen";
-            if (BattlePlanetGame.isActive()) {
-                BattlePlanetGame.resizeToContainer();
-            }
-        });
-    }
-
+function onReady() {
+    fullscreenButton?.addEventListener("click", async () => {
+        const main = $("#main");
+        if (document.fullscreenElement === main) await document.exitFullscreen();
+        else await main?.requestFullscreen();
+    });
+    document.addEventListener("fullscreenchange", () => {
+        fullscreenButton.textContent = document.fullscreenElement === $("#main") ? "Exit Fullscreen" : "Fullscreen";
+        if (BattlePlanetGame.isActive()) BattlePlanetGame.resizeToContainer();
+    });
     updateUserVisibility();
     updateGameVisibility();
-
-    if (!token) {
-        socket.emit("getToken");
-    } else {
-        socket.emit("setToken", {
-            uuid: token,
-            username,
-        });
-    }
-
-    socket.on("setToken", (message) => {
-        token = message.uuid;
-        localStorage.setItem("token", token);
-    });
-
+    socket.emit(token ? "setToken" : "getToken", token ? { uuid: token, username } : undefined);
+    socket.on("setToken", (message) => { token = message.uuid; localStorage.setItem("token", token); });
     socket.on("chat", appendChatMessage);
-
-    socket.on("lobbyJoin", (uuid) => {
-        gameId = uuid;
-        updateGameVisibility();
-    });
-
-    socket.on("lobbyListJoin", () => {
-        gameId = undefined;
-        updateGameVisibility();
-    });
-
+    socket.on("lobbyJoin", (uuid) => { gameId = uuid; updateGameVisibility(); });
+    socket.on("lobbyListJoin", () => { gameId = undefined; updateGameVisibility(); });
     socket.on("lobbyUpdate", renderLobbyList);
-    socket.on("gameState", (msg) => {
-        if (msg.full) {
-            BattlePlanetGame.setFullState(msg.state);
-        } else {
-            BattlePlanetGame.setDelta(msg);
-        }
-    });
+    socket.on("gameState", (message) => message.full ? BattlePlanetGame.setFullState(message.state) : BattlePlanetGame.setDelta(message));
+    BattlePlanetGame.setInputSender((payload) => socket.emit("gameInput", payload));
+    setInterval(() => socket.emit("ping"), 30000);
 
-    BattlePlanetGame.setInputSender((payload) => {
-        socket.emit("gameInput", payload);
-    });
-
-    setInterval(() => {
-        socket.emit("ping");
-    }, 200);
-
-    $("form#user").submit((event) => {
+    $("#user").addEventListener("submit", (event) => {
         event.preventDefault();
-        username = $("#userInput").val();
+        username = $("#userInput").value;
         localStorage.setItem("username", username);
-        socket.emit("setToken", {
-            uuid: token,
-            username,
-        });
+        socket.emit("setToken", { uuid: token, username });
         updateUserVisibility();
-        return false;
     });
-
-    $("form#chat").submit((event) => {
+    $("#chat").addEventListener("submit", (event) => {
         event.preventDefault();
-        socket.emit("chat", $("#chatInput").val());
-        $("#chatInput").val("");
-        return false;
+        const input = $("#chatInput");
+        socket.emit("chat", input.value);
+        input.value = "";
     });
-
-    $("form#lobbyForm").submit((event) => {
+    $("#lobbyForm").addEventListener("submit", (event) => {
         event.preventDefault();
+        const input = $("#lobbyNameInput");
         const settings = getLobbySettings();
-        socket.emit("lobbyCreate", {
-            name: $("#lobbyNameInput").val() || "BattlePlanet",
-            isPublic: settings.isPublic,
-            settings,
-        });
-        $("#lobbyNameInput").val("");
-        return false;
+        socket.emit("lobbyCreate", { name: input.value || "BattlePlanet", isPublic: settings.isPublic, settings });
+        input.value = "";
     });
-});
+}
+
+onReady();

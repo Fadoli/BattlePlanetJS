@@ -72,7 +72,8 @@ const cache = {
     sunMaterial: null,
     // Reusable Sets for per-frame color group tracking (avoid allocations)
     asteroidColors: new Set(),
-    rockColors: new Set()
+    rockColors: new Set(),
+    instancedBuckets: { asteroids: new Map(), rocks: new Map() }
 };
 const perfState = { frameCount: 0, lastUpdatedAt: 0, sampleStartedAt: 0, totals: { frame: 0, background: 0, arena: 0, entities: 0, effects: 0, ui: 0 }, snapshot: null };
 // Entity types present in deltas and snapshots
@@ -864,7 +865,7 @@ function updateUi() {
         leaderboardHidden = shouldHideLeaderboard;
     }
 
-    if (showLeaderboard) {
+    if (showLeaderboard && shouldRefresh) {
         const perf = getPerfStats();
 
         const sortEntities = (left, right) => {
@@ -930,7 +931,7 @@ function updateUi() {
             leaderboardElement.textContent = leaderboardText;
             lastLeaderboardText = leaderboardText;
         }
-    } else if (lastLeaderboardText) {
+    } else if (!showLeaderboard && lastLeaderboardText) {
         lastLeaderboardText = "";
     }
 
@@ -986,19 +987,22 @@ const _instanceScale = new THREE.Vector3();
 const INSTANCED_MESH_CAPACITY = 256; // over-allocate to avoid GPU buffer churn
 
 function renderInstanced(entities, geometry, zIndex, groupKey) {
+    const byColor = cache.instancedBuckets[groupKey];
+    const activeColors = groupKey === "asteroids" ? cache.asteroidColors : cache.rockColors;
+    activeColors.clear();
     if (entities.length === 0) return;
-    
-    // Group by numeric color (avoid string conversion)
-    const byColor = new Map();
+    byColor.forEach((bucket) => { bucket.length = 0; });
     for (let i = 0; i < entities.length; i++) {
         const entity = entities[i];
         const colorKey = entity.color;
         let bucket = byColor.get(colorKey);
         if (!bucket) { bucket = []; byColor.set(colorKey, bucket); }
         bucket.push(entity);
+        activeColors.add(colorKey);
     }
     
-    byColor.forEach((ents, colorKey) => {
+    activeColors.forEach((colorKey) => {
+        const ents = byColor.get(colorKey);
         const id = `${groupKey}-${colorKey}`;
         let material = cache.materialCache.get(colorKey);
         if (!material) {
@@ -1030,9 +1034,9 @@ function renderInstanced(entities, geometry, zIndex, groupKey) {
         instancedMesh.count = ents.length;
         instancedMesh.visible = true;
         
-        const radius = ents[0].radius || 1;
-        _instanceScale.set(radius, radius, 1);
         for (let i = 0; i < ents.length; i++) {
+            const radius = ents[i].radius || 1;
+            _instanceScale.set(radius, radius, 1);
             _instancePosition.set(ents[i].x, ents[i].y, zIndex);
             _instanceMatrix.compose(_instancePosition, _instanceQuaternion, _instanceScale);
             instancedMesh.setMatrixAt(i, _instanceMatrix);
@@ -1148,19 +1152,15 @@ function render() {
     suns.forEach((_, i) => currentIds.add(`sun-${i}`));
     // Track instanced entity keys by grouping color (numeric keys)
     const { asteroidColors, rockColors } = cache;
-    asteroidColors.clear();
-    (networkState.asteroids || []).forEach(a => asteroidColors.add(`asteroids-${a.color}`));
-    asteroidColors.forEach(key => currentIds.add(key));
-    rockColors.clear();
-    networkState.rocks.forEach(r => rockColors.add(`rocks-${r.color}`));
-    rockColors.forEach(key => currentIds.add(key));
+    asteroidColors.forEach(color => currentIds.add(`asteroids-${color}`));
+    rockColors.forEach(color => currentIds.add(`rocks-${color}`));
     networkState.players.forEach(p => currentIds.add(p.id));
     networkState.enemies.forEach(e => currentIds.add(e.id));
     (networkState.explosions || []).forEach((e, i) => currentIds.add(`explosion-${e.id || i}`));
 
     cache.threeObjects.forEach((obj, id) => {
         if (currentIds.has(id)) return;
-        // Fully dispose explosion meshes — they have unique IDs and are never reused
+        // Explosion meshes have unique IDs and are never reused.
         if (id.startsWith('explosion-')) {
             scene.remove(obj);
             cache.threeObjects.delete(id);
@@ -1265,7 +1265,6 @@ const battlePlanetGame = {
         buildArena(); buildSun();
         const player = getPlayer(); if (!player) localPlayerVisual = null;
         if (player && !hasInitialCamera) { camera.x = player.x; camera.y = player.y; hasInitialCamera = true; }
-        render();
     },
     setDelta(packet) {
         if (!baseState) return;
@@ -1307,7 +1306,6 @@ const battlePlanetGame = {
 
         networkState = interpolatedState();
         updateRoundHistory(networkState);
-        render();
     }, clearState() {
         snapshotBuffer = [];
         serverOffsetEstimate = null;
@@ -1327,15 +1325,13 @@ const battlePlanetGame = {
         roundHistory = new Map();
         leaderboardElement.hidden = true;
         for (const type of _DELTA_TYPES) { _baseStateMaps[type].clear(); _interpPools[type].length = 0; }
-        cache.threeObjects.forEach(obj => {
-            scene.remove(obj);
-            // Dispose InstancedMesh geometry
-            if (obj.geometry) obj.geometry.dispose();
-        });
+        cache.threeObjects.forEach(obj => scene.remove(obj));
         cache.threeObjects.clear();
         // Dispose cached materials and textures
         cache.materialCache.forEach(mat => mat.dispose());
         cache.materialCache.clear();
+        cache.instancedBuckets.asteroids.clear();
+        cache.instancedBuckets.rocks.clear();
         cache.planetSprites.forEach(sprite => sprite.texture?.dispose());
         cache.planetSprites.clear();
         if (cache.arena) { scene.remove(cache.arena); cache.arena = null; }

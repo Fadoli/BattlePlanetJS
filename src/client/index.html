@@ -14,7 +14,7 @@
     </form>
   </div>
 
-  <div id="content" style="display: none;">
+  <div id="content" hidden>
     <div id="main">
       <div id="lobby">
         <section class="lobbyHero">
@@ -99,7 +99,7 @@
           <div id="games"></div>
         </section>
       </div>
-      <div id="gameScreen" style="display: none;">
+      <div id="gameScreen" hidden>
         <div id="gameHeader" class="gameHudBar">
           <div class="gameTitleRow">
             <h1>BattlePlanet</h1>
@@ -136,7 +136,6 @@
     </div>
   </div>
 
-  <script src="lib/jquery.min.js"></script>
   <script type="importmap">
     {
       "imports": {
@@ -145,7 +144,6 @@
       }
     }
   </script>
-  <script type="module" src="src/game.js"></script>
   <script type="module" src="src/index.js"></script>
 </body>
 </html>
