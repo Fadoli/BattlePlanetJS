@@ -1182,18 +1182,16 @@ function render() {
 }
 function frame(now) {
     const targetMs = targetFrameMs();
-    if (targetMs > 0 && now - lastRenderAt < targetMs) {
-        if (isRunning) animationFrame = window.requestAnimationFrame(frame);
-        return;
-    }
-
-    lastRenderAt = now;
     networkState = interpolatedState();
     syncLocalPlayerVisual();
     updateCamera();
     sendContinuousAim();
     updateAudio();
-    render();
+
+    if (targetMs === 0 || now - lastRenderAt >= targetMs) {
+        lastRenderAt = now;
+        render();
+    }
 
     if (isRunning) animationFrame = window.requestAnimationFrame(frame);
 }
