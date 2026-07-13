@@ -994,6 +994,7 @@ function renderInstanced(entities, geometry, zIndex, groupKey) {
     byColor.forEach((bucket) => { bucket.length = 0; });
     for (let i = 0; i < entities.length; i++) {
         const entity = entities[i];
+        if (!isCircleVisible(worldToScreenX(entity.x), worldToScreenY(entity.y), worldToScreenSize(entity.radius || 1))) continue;
         const colorKey = entity.color;
         let bucket = byColor.get(colorKey);
         if (!bucket) { bucket = []; byColor.set(colorKey, bucket); }
@@ -1050,8 +1051,13 @@ function renderPlanet(planet, isLocalPlayer) {
     const x = worldToScreenX(planet.x);
     const y = worldToScreenY(planet.y);
     const screenRadius = Math.max(2, worldToScreenSize(planet.radius));
+    const auraRadius = Math.max(screenRadius + 2, worldToScreenSize(planet.radius + 20));
+    if (!isCircleVisible(x, y, auraRadius)) {
+        const obj = cache.threeObjects.get(planet.id);
+        if (obj) obj.visible = false;
+        return;
+    }
     const sprite = getPlanetSprite(planet, isLocalPlayer);
-    const auraRadius = Math.max(screenRadius + 2, sprite.auraRadius * zoom);
 
     const obj = getThreeObject(planet.id, "planet", () => {
         const material = new THREE.MeshBasicMaterial({
@@ -1062,17 +1068,13 @@ function renderPlanet(planet, isLocalPlayer) {
         return new THREE.Mesh(cache.geometries.plane, material);
     });
 
-    if (!isCircleVisible(x, y, auraRadius)) {
-        obj.visible = false;
-    } else {
-        // Update texture if sprite changed (rare), reuse cached texture
-        if (obj.material.map !== sprite.texture) {
-            obj.material.map = sprite.texture;
-        }
-        obj.visible = true;
-        obj.position.set(planet.x, planet.y, 5);
-        obj.scale.set(sprite.size, sprite.size, 1);
+    // Update texture if sprite changed (rare), reuse cached texture
+    if (obj.material.map !== sprite.texture) {
+        obj.material.map = sprite.texture;
     }
+    obj.visible = true;
+    obj.position.set(planet.x, planet.y, 5);
+    obj.scale.set(sprite.size, sprite.size, 1);
 
     const labelY = y - screenRadius - Math.max(10, worldToScreenSize(12));
     if (labelY > -VISIBILITY_MARGIN && labelY < viewport.height + VISIBILITY_MARGIN) {
